@@ -40,11 +40,6 @@ tj:
       enable: true
       excludeLoginPaths:
         - /students/register
-        - /users/detail/{isStaff}
-        - /users/list
-        - GET:/users/{id}
-        - /users/{id}/type
-        - /users/ids
   jdbc:
     database: tj_message
   sms:
