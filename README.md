@@ -4,9 +4,9 @@
 
 智慧MOOC教育平台是一个在线的非学历职业技能培训平台，核心业务是以售卖各种技能培训的在线课程，并提供丰富的学习辅助功能、交互功能，以提升用户学习时的氛围感和学习的积极性。
 
-技术栈：SpringBoot、SpringCloud、Mybatis、MySQL、Redis、Redisson、Caffeine、RabbitMQ、XXL-JOB、腾讯云VOD（视频点播）、Nginx等
+技术栈：SpringBoot、SpringCloud、Mybatis、MySQL、Redis、Redisson、Caffeine、RabbitMQ、XXL-JOB、腾讯云VOD（视频点播）、Nginx、Minio、Langchain4j、Qdrant、Sentinel、Seata等
 
-拓展技术栈： Dubbo、Minio、Langchain4j、Qdrant、RocketMQ、SkyWalking、Sentinel、Seata等（后续看情况筛选）
+拓展技术栈： Dubbo、RocketMQ、SkyWalking等（后续看情况筛选）
 
 项目展示视频：
 - 用户端：https://www.bilibili.com/video/BV1NEb5zBEko
@@ -34,7 +34,7 @@
 | tj-remark    | 评论管理中心 | 用于处理评论、评价等相关功能，对点赞等操作进行专门统计存储                  |
 | tj-search    | 搜索系统   | 提供搜索功能，支持用户对课程、资料等内容的搜索及提供个性化推荐                |
 | tj-trade     | 交易中心   | 处理交易相关业务，如订单管理、交易记录查询等                         |
-| tj-user      | 用户中心   | 管理用户相关业务，如用户信息的增删改查、用户角色管理等                    | 
+| tj-user      | 用户中心   | 管理用户相关业务，如用户信息的增删改查、用户角色管理等                    |
 
 
 ## 前端模块介绍
@@ -139,11 +139,24 @@
 - CentOS Linux release 7.9.2009 (Core)
 - Docker 20.10.8
 
+## 相关资料
+
+本项目相关资料文件夹：
+
+- /nacos 存储项目nacos配置文件
+- /sql 存储项目数据库表源文件（不带数据）
+- /sql/test 存储项目数据库表（带测试数据）
+
+
 ## 关于项目
 
 项目基于天机学堂进行改造，改造笔记在[项目改造笔记](天机学堂-扩展.md)
 
+本项目改造的功能、代码为我本人原创。
+
 > 目前因为想集成AI相关内容到此项目中（具体开发进展请查看jdk17分支，相关改造笔记也撰写好），本分支暂时先不更新新功能。
+> 
+>后续将会把本分支整体升级为jdk17版本，并再此基础上新增功能！
 
 如果您对项目有改造的想法、意见，或者您也想参与到项目代码的贡献，欢迎联系或私信我。QQ：1418875140
 
