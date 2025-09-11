@@ -1,9 +1,8 @@
-package com.itheima;
+package com.tianji;
 
 
 import com.tianji.api.cache.CategoryCache;
 import com.tianji.learning.LearningApplication;
-import io.swagger.annotations.ApiModelProperty;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

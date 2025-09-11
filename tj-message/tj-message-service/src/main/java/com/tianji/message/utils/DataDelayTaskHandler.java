@@ -1,12 +1,14 @@
-package com.tianji.chat.utils;
+package com.tianji.message.utils;
 
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
-import com.tianji.chat.domain.po.ChatSession;
-import com.tianji.chat.domain.po.UserSession;
-import com.tianji.chat.service.IChatSessionService;
-import com.tianji.chat.service.IUserSessionService;
+import com.alibaba.fastjson.JSON;
+import com.tianji.common.utils.BeanUtils;
+import com.tianji.message.domain.dto.ChatMessageDTO;
+import com.tianji.message.domain.po.ChatMessage;
+import com.tianji.message.mapper.ChatMessageMapper;
+import com.tianji.message.service.IChatMessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RBlockingQueue;
@@ -23,7 +25,9 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-import static com.tianji.chat.constants.RedisConstants.*;
+import static com.tianji.message.constants.RedisConstants.*;
+import static com.tianji.message.constants.RedisConstants.MESSAGE_RETRY_QUEUE;
+
 
 @Slf4j
 @Component
@@ -34,9 +38,8 @@ public class DataDelayTaskHandler {
 
     private final StringRedisTemplate redisTemplate;
 
-    private final IChatSessionService chatSessionService;
+    private final ChatMessageMapper chatMessageMapper;
 
-    private final IUserSessionService userSessionService;
 
     private static volatile boolean begin = true;
 
@@ -53,12 +56,12 @@ public class DataDelayTaskHandler {
     }
 
     public void handleDelayTask() {
-        RBlockingQueue<String> queue = redissonClient.getBlockingQueue(CHAT_DELAY_QUEUE);
+        RBlockingQueue<String> queue = redissonClient.getBlockingQueue(MESSAGE_DELAY_QUEUE);
         handleTask(queue);
     }
 
     public void handleRetryTask() {
-        RBlockingQueue<String> retryQueue = redissonClient.getBlockingQueue(CHAT_RETRY_QUEUE);
+        RBlockingQueue<String> retryQueue = redissonClient.getBlockingQueue(MESSAGE_RETRY_QUEUE);
         handleTask(retryQueue);
     }
 
@@ -82,41 +85,19 @@ public class DataDelayTaskHandler {
                 // size <= num，则说明用户已经结束聊天，则从Redis中队列中取出所有数据，并保存到数据库中
                 // 查询Redis中的数据
                 List<String> contentList = redisTemplate.opsForList().range(key, 0, -1);
-                log.info("延迟落库 查找：{}",contentList);
-                // 查询数据库中最后保存的数据
-                String[] split = key.split(":");
 
-                Integer count = userSessionService.lambdaQuery().eq(UserSession::getSessionId, split[3]).count();
-                if(count==0){
-                    //这个会话已经被删除了，延迟同步不用做了
-                    continue;
+                List<ChatMessage> chatSessionList = new ArrayList<>();
+                for (String content : contentList) {
+                    ChatMessageDTO messageDTO = JSON.parseObject(content, ChatMessageDTO.class);
+                    ChatMessage message = BeanUtils.copyBean(messageDTO, ChatMessage.class);
+                    message.setSentAt(LocalDateTime.now());
+                    message.setStatus(1); // 1-已发送
+                    chatSessionList.add(message);
                 }
-                List<ChatSession> lastContents = chatSessionService.lambdaQuery()
-                        .eq(ChatSession::getUserId, split[2])
-                        .eq(ChatSession::getSessionId, split[3])
-                        .orderByDesc(ChatSession::getSegmentIndex)
-                        .list(); // 查询所有匹配的数据
-
-                ChatSession lastContent = !lastContents.isEmpty() ? lastContents.get(0) : null; // 取第一条数据或者
-                int index = 0;
-                if (ObjectUtil.isNotEmpty(lastContent)) {
-                    assert lastContent != null;
-                    index = lastContent.getSegmentIndex()+1;
+                //TODO 批量保存
+                for (ChatMessage chatMessage : chatSessionList) {
+                    chatMessageMapper.insert(chatMessage);
                 }
-                List<ChatSession> chatSessionList = new ArrayList<>();
-                for (int i = 0; i < contentList.size(); i++) {
-                    ChatSession chatSession = ChatSession.builder()
-                            .userId(Long.valueOf(split[2]))
-                            .sessionId(split[3])
-                            .segmentIndex(index+i)
-                            .content(contentList.get(i))
-                            .createTime(LocalDateTime.now())
-                            .build();
-                    chatSessionList.add(chatSession);
-                    log.info("chatSessionList.add:{}",chatSession);
-                }
-
-                chatSessionService.saveBatch(chatSessionList);
 
                 redisTemplate.delete(key);
             } catch (InterruptedException e) {
@@ -135,7 +116,7 @@ public class DataDelayTaskHandler {
                     log.info("任务 {} 重试第 {} 次", taskJson.getStr("key"), retryCount + 1);
                 } else {
                     log.error("任务最终失败，加入死信队列: {}", taskJson);
-                    redisTemplate.opsForList().rightPush(CHAT_DEAD_LETTER_QUEUE, taskJson.toString());
+                    redisTemplate.opsForList().rightPush(MESSAGE_DEAD_LETTER_QUEUE, taskJson.toString());
                 }
             }
         }
@@ -143,13 +124,13 @@ public class DataDelayTaskHandler {
 
 
     public void addDelayedTask(String task, long delay, TimeUnit unit) {
-        RBlockingQueue<String> blockingQueue = redissonClient.getBlockingQueue(CHAT_DELAY_QUEUE);
+        RBlockingQueue<String> blockingQueue = redissonClient.getBlockingQueue(MESSAGE_DELAY_QUEUE);
         RDelayedQueue<String> delayedQueue = redissonClient.getDelayedQueue(blockingQueue);
         delayedQueue.offer(task, delay, unit);
     }
 
     private void addRetryTask(String task) {
-        RBlockingQueue<String> retryBlockingQueue = redissonClient.getBlockingQueue(CHAT_RETRY_QUEUE);
+        RBlockingQueue<String> retryBlockingQueue = redissonClient.getBlockingQueue(MESSAGE_RETRY_QUEUE);
         RDelayedQueue<String> retryDelayedQueue = redissonClient.getDelayedQueue(retryBlockingQueue);
         retryDelayedQueue.offer(task, RETRY_TASK_EXECUTE_TIME, TimeUnit.SECONDS);
     }

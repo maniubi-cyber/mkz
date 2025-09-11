@@ -18,11 +18,37 @@ public interface RedisConstants {
      */
     String WEBSOCKET_KEY_PREFIX="ws";
 
+    /**
+     * websocket聊天消息-延迟队列-延迟落库
+     */
+    String MESSAGE_DELAY_QUEUE = "message-delay-queue";
+
+    /**
+     * websocket聊天消息-延迟队列-重试
+     */
+    String MESSAGE_RETRY_QUEUE = "message-retry-blocking";
+
+    /**
+     * websocket聊天消息-死信队列
+     */
+    String MESSAGE_DEAD_LETTER_QUEUE = "message-dead-letter-queue";
+
+
 
     // 敏感词库在Redis中的存储Key
     String SENSITIVE_WORDS_KEY = "sensitive:words";
     String SENSITIVE_DICTIONARY_KEY = "sensitive:dictionary";
     // 敏感词库在Redis中缓存过期时间（默认2小时）
     long SENSITIVE_CACHE_TTL = 7200;
+
+    /**
+     * 延迟任务执行时间  单位秒
+     */
+    int DELAY_TASK_EXECUTE_TIME = 10;
+
+    /**
+     * 重试任务执行时间  单位秒
+     */
+    int RETRY_TASK_EXECUTE_TIME = 10;
 
 }

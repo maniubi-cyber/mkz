@@ -102,7 +102,6 @@ public class MarkdownDocsServiceImpl extends ServiceImpl<MarkdownDocsMapper, Mar
             markdownDocs.setCreateTime(LocalDateTime.now());
             markdownDocs.setUpdateTime(LocalDateTime.now());
 
-
             this.save(markdownDocs);
             // 此处可以将内容保存到数据库或进行向量分割
             saveSegment(markdownDocs, userId, level, markdownContent);

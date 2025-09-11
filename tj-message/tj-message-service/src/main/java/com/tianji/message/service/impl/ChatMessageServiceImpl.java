@@ -1,5 +1,6 @@
 package com.tianji.message.service.impl;
 
+import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -22,6 +23,7 @@ import com.tianji.message.mapper.ChatMessageMapper;
 import com.tianji.message.mapper.GroupMemberMapper;
 import com.tianji.message.mapper.MessageReceiptMapper;
 import com.tianji.message.service.IChatMessageService;
+import com.tianji.message.utils.DataDelayTaskHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,8 +33,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static com.tianji.message.constants.RedisConstants.DELAY_TASK_EXECUTE_TIME;
 
 @Service
 @RequiredArgsConstructor
@@ -41,6 +46,7 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
     private final MessageReceiptMapper messageReceiptMapper;
     private final GroupMemberMapper groupMemberMapper;
     private final UserClient userClient;
+    private final DataDelayTaskHandler dataDelayTaskHandler;
 
     @Override
     @Transactional
@@ -50,6 +56,9 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
         message.setSentAt(LocalDateTime.now());
         message.setStatus(1); // 1-已发送
         save(message);
+
+        //TODO 如果想配置Redis进行异步落库
+//        dataDelayTaskHandler.addDelayedTask(JSON.toJSONString(messageDTO),DELAY_TASK_EXECUTE_TIME , TimeUnit.SECONDS);
 
 //        // 2.创建消息回执(如果是群聊，需要为每个成员创建)
 //        if (messageDTO.getMessageType() == 1) { // 私聊
