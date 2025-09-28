@@ -1,18 +1,23 @@
 # 智慧MOOC教育平台
 
+![logo](天机学堂-扩展.assets/logo.png)
+
+>
+> 最近在进行项目升级（jdk11->jdk17），可切换到jdk17分支查看
+> 
+**项目展示视频：**
+- 用户端：https://www.bilibili.com/video/BV1NEb5zBEko
+- 管理端：https://www.bilibili.com/video/BV1fdtRz6Efc
+
+
 ## 项目介绍
 
 智慧MOOC教育平台是一个在线的非学历职业技能培训平台，核心业务是以售卖各种技能培训的在线课程，并提供丰富的学习辅助功能、交互功能，以提升用户学习时的氛围感和学习的积极性。
 
-技术栈：SpringBoot、SpringCloud、Mybatis、MySQL、Redis、Redisson、Caffeine、RabbitMQ、XXL-JOB、腾讯云VOD（视频点播）、Nginx、Minio、Langchain4j、Qdrant、Sentinel、Seata等
+技术栈：SpringBoot、SpringCloud、Mybatis、MySQL、Redis、Redisson、Caffeine、RabbitMQ、XXL-JOB、腾讯云VOD（视频点播）、Nginx、Minio、Langchain4j、Qdrant、Sentinel、Seata、InfluxDB
 
-拓展技术栈： Dubbo、RocketMQ、SkyWalking等（后续看情况筛选）
+拓展技术栈： Dubbo、RocketMQ、SkyWalking、Promethus、Grafana
 
-项目展示视频：
-- 用户端：https://www.bilibili.com/video/BV1NEb5zBEko
-- 管理端：https://www.bilibili.com/video/BV1fdtRz6Efc
-
-> 更新公告：最近在进行项目升级（jdk11->jdk17），可切换到jdk17分支查看相关代码和笔记！
 
 ## 项目模块介绍
 
