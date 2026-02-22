@@ -50,6 +50,17 @@ const props = defineProps({
 
 const chartContainer = ref(null);
 
+// 新增：安全格式化饼图标签的函数
+const formatPieLabel = (params) => {
+    const name = params.name || '';
+    const value = params.value || 0;
+    // 核心：对百分比d做兜底，undefined/NaN时显示0.0%
+    const percent = params.percent !== undefined && !isNaN(params.percent) 
+        ? params.percent.toFixed(1) 
+        : '0.0';
+    return `${name}: ${value} (${percent}%)`;
+};
+
 // 初始化图表
 const initChart = async () => {
     // 等待 DOM 更新后再初始化图表
@@ -79,7 +90,8 @@ const initChart = async () => {
             };
             seriesItem.label = {
                 show: true,
-                formatter: '{b}: {c} ({d}%)'
+                // 关键修改：替换原有的字符串formatter为安全函数
+                formatter: formatPieLabel
             };
             seriesItem.emphasis = {
                 itemStyle: {
