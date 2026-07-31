@@ -66,6 +66,7 @@ public class Langchain4jConfig {
                 .tokenizer(new OpenAiTokenizer())
                 .timeout(Duration.ofSeconds(timeoutSeconds))
                 .modelName(modelName)
+                .maxRetries(maxRetries)
                 .build();
     }
 

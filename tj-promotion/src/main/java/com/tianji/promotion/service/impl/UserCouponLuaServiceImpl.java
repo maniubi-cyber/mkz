@@ -142,11 +142,13 @@ public class UserCouponLuaServiceImpl extends ServiceImpl<UserCouponMapper, User
         if (coupon == null) {
             throw new BizIllegalException("优惠券不存在！");
         }
-        // 2.更新优惠券的已经发放的数量 + 1
-        int r = couponMapper.incrIssueNum(coupon.getId());
+        // 2.更新优惠券的已经发放的数量 + 1（使用乐观锁，版本不匹配则返回0，防止超发）
+        int r = couponMapper.incrIssueNumWithVersion(coupon.getId(), coupon.getVersion());
         if (r == 0) {
             throw new BizIllegalException("优惠券库存不足！");
         }
+        // 2.1 更新缓存中的版本号，避免后续操作使用过期版本
+        coupon.setVersion(coupon.getVersion() + 1);
         // 3.新增一个用户券
         saveUserCoupon(uc.getUserId(), coupon);
 
@@ -485,12 +487,15 @@ public class UserCouponLuaServiceImpl extends ServiceImpl<UserCouponMapper, User
         if (!success) {
             return;
         }
-        // 5.更新已使用数量
+        // 5.更新已使用数量（使用乐观锁）
         List<Long> couponIds = userCoupons.stream().map(UserCoupon::getCouponId).collect(Collectors.toList());
         for (Long couponId : couponIds) {
-            int c = couponMapper.incrIssueNum(couponId);
-            if (c < 1) {
-                throw new DbException("更新优惠券使用数量失败！");
+            Coupon coupon = couponMapper.selectById(couponId);
+            if (coupon != null) {
+                int c = couponMapper.incrUsedNumWithVersion(couponId, coupon.getVersion());
+                if (c < 1) {
+                    throw new DbException("更新优惠券使用数量失败，优惠券可能已被并发修改！");
+                }
             }
         }
 
@@ -528,9 +533,12 @@ public class UserCouponLuaServiceImpl extends ServiceImpl<UserCouponMapper, User
         }
         List<Long> couponIds = userCoupons.stream().map(UserCoupon::getCouponId).collect(Collectors.toList());
         for (Long couponId : couponIds) {
-            int c = couponMapper.incrIssueNum(couponId);
-            if (c < 1) {
-                throw new DbException("更新优惠券使用数量失败！");
+            Coupon coupon = couponMapper.selectById(couponId);
+            if (coupon != null) {
+                int c = couponMapper.incrUsedNumWithVersion(couponId, coupon.getVersion());
+                if (c < 1) {
+                    throw new DbException("更新优惠券使用数量失败，优惠券可能已被并发修改！");
+                }
             }
         }
     }

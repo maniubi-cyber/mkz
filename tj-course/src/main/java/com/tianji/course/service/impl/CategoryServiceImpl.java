@@ -30,6 +30,7 @@ import com.tianji.course.service.ICourseDraftService;
 import com.tianji.course.service.ICourseService;
 import com.tianji.course.utils.CategoryDataWrapper;
 import com.tianji.course.utils.CategoryDataWrapper2;
+import com.tianji.course.config.TwoLevelCacheManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -39,6 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.annotation.Resource;
 import java.util.*;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -67,6 +69,9 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
 
     @Resource(name = "taskExecutor")
     private Executor taskExecutor;
+
+    @Autowired
+    private TwoLevelCacheManager twoLevelCacheManager;
 
     @Override
     public List<CategoryVO> list(CategoryListDTO categoryListDTO) {
@@ -214,6 +219,9 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
         if (result <= 0) {
             throw new DbException(CourseErrorInfo.Msg.CATEGORY_DELETE_FAILD);
         }
+        // 清除双层缓存
+        twoLevelCacheManager.evict("category:oneLevel", "category:oneLevel");
+        twoLevelCacheManager.evict("category:all", "category:all");
     }
 
     /**
@@ -316,6 +324,9 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
         if (result <= 0) {
             throw new BizIllegalException(ErrorInfo.Msg.DB_UPDATE_EXCEPTION);
         }
+        // 清除双层缓存
+        twoLevelCacheManager.evict("category:oneLevel", "category:oneLevel");
+        twoLevelCacheManager.evict("category:all", "category:all");
     }
 
     @Override
@@ -354,17 +365,24 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
 
     @Override
     public List<CategoryVO> allOfOneLevel() {
-        //1.查询数据
-        List<Category> list = super.list();
-        if (CollUtils.isEmpty(list)) {
-            return new ArrayList<>();
-        }
+        String localKey = "category:oneLevel";
+        String redisKey = "category:oneLevel";
 
-        //2.统计一级二级目录对应的三级目录的数量，做一个三分钟的redis缓存
-        Map<Long, Long> thirdCategoryNumMap = this.statisticThirdCategory();
-        return BeanUtils.copyList(list, CategoryVO.class, (category, categoryVO) -> {
-            categoryVO.setThirdCategoryNum(thirdCategoryNumMap.getOrDefault(category.getId(), 0L).intValue());
-        });
+        // 使用双层缓存获取一级分类列表
+        List<CategoryVO> cached = twoLevelCacheManager.get(localKey, redisKey, 30, TimeUnit.MINUTES,
+                () -> {
+                    List<Category> list = super.list();
+                    if (CollUtils.isEmpty(list)) {
+                        return Collections.emptyList();
+                    }
+                    Map<Long, Long> thirdCategoryNumMap = this.statisticThirdCategory();
+                    return BeanUtils.copyList(list, CategoryVO.class, (category, categoryVO) -> {
+                        categoryVO.setThirdCategoryNum(
+                                thirdCategoryNumMap.getOrDefault(category.getId(), 0L).intValue());
+                    });
+                });
+
+        return cached != null ? cached : new ArrayList<>();
     }
 
     @Override

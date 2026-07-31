@@ -19,19 +19,16 @@ public class AiConfig {
         String chat(@MemoryId String memoryId, @UserMessage String message);
 
         // 流式响应
-        @SystemMessage ("你叫小天，是天机学堂的智能学习助手。专注为学生解答问题，回答要简洁明了，语气亲切。若问题超出知识范围，就说‘这个问题我暂时还不清楚，你可以问问老师或查阅资料哦～’")
+        @SystemMessage ("你叫小天，是天机学堂的智能学习助手。专注为学生解答问题，回答要简洁明了，语气亲切。若问题超出知识范围，就说'这个问题我暂时还不清楚，你可以问问老师或查阅资料哦～'")
         TokenStream stream(@MemoryId String memoryId, @UserMessage String message);
 
         //获取历史记录
         List<ChatMessage> getHistory(@MemoryId String memoryId);
     }
 
-    // ----------------------------- 存储到 Redis -----------------------------
+    // ----------------------------- 存储到 Redis（启用滑动窗口+摘要压缩） -----------------------------
     @Autowired
-    private PersistentChatMemoryStore store;
-
-//    @Autowired
-//    private ToolsService toolsService;
+    private EnhancedChatMemoryStore store;
 
     @Bean
     public AssistantRedis assistantRedis(ChatLanguageModel qwenChatModel,
@@ -54,7 +51,6 @@ public class AiConfig {
 
     // ------------------------------ 构建提示词 StructuredPrompt ---------------------------------------
     public interface KnowledgeAdvisor {
-//        @SystemMessage("你是一位智能学习助手，帮助学生根据他们上传的学习资料回答问题。 请根据学生提供的知识内容，用清晰、准确、简洁的语言回答，尽量避免使用模糊或复杂的术语。 如果提问不在知识库范围内，你可以利用你已知的知识进行回答,并在最后附上：'这个问题好像不在你的笔记中，建议你查阅更多资料或补充相关内容。{{answerInstructions}}")
         @SystemMessage("你是一位智能学习助手，核心职责是基于学生上传的学习资料精准回答问题。请严格遵循以下规则：\n" +
                 "资料处理规则\n" +
                 "格式识别：学生提供的参考资料会以 Markdown 格式呈现，且被固定标记包裹：\n" +

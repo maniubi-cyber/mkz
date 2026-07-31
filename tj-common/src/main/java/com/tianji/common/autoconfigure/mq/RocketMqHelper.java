@@ -1,131 +1,188 @@
-//package com.tianji.common.autoconfigure.mq;
-//
-//import com.tianji.common.utils.MqUtils;
-//import groovy.util.logging.Slf4j;
-//import org.apache.rocketmq.client.exception.MQBrokerException;
-//import org.apache.rocketmq.client.exception.MQClientException;
-//import org.apache.rocketmq.client.producer.SendResult;
-//import org.apache.rocketmq.client.producer.SendStatus;
-//import org.apache.rocketmq.remoting.exception.RemotingException;
-//import org.apache.rocketmq.spring.core.RocketMQLocalTransactionListener;
-//import org.apache.rocketmq.spring.core.RocketMQTemplate;
-//import org.slf4j.Logger;
-//import org.slf4j.LoggerFactory;
-//import org.springframework.messaging.support.MessageBuilder;
-//import org.springframework.transaction.support.TransactionCallback;
-//
-//@Slf4j
-//public class RocketMqHelper {
-//
-//    private static final Logger log = LoggerFactory.getLogger(RocketMqHelper.class);
-//    private final RocketMQTemplate rocketMQTemplate;
-//
-//
-//    public RocketMqHelper(RocketMQTemplate rocketMQTemplate) {
-//        this.rocketMQTemplate = rocketMQTemplate;
-//    }
-//
-//    //根据topic发送消息（同步）
-//    public <T> boolean sendSync(String topic, T msg) {
-//        try {
-//            SendResult result = rocketMQTemplate.syncSend(topic, msg);
-//            return SendStatus.SEND_OK.equals(result.getSendStatus());
-//        } catch (Exception e) {
-//            log.error("发送消息失败", e);
-//            return false;
-//        }
-//    }
-//
-//    //根据topic:tags发送消息（同步）
-//    public <T> boolean sendSync(String topic, String tags, T msg) {
-//        try {
-//            SendResult result = rocketMQTemplate.syncSend(MqUtils.topicWithTag(topic, tags), msg);
-//            return SendStatus.SEND_OK.equals(result.getSendStatus());
-//        } catch (Exception e) {
-//            log.error("发送消息失败", e);
-//            return false;
-//        }
-//    }
-//
-//    /**
-//     * 根据topic:tags发送事务消息（同步）
-//     * @param topic 主题
-//     * @param tags 标签
-//     * @param msg 消息内容
-//     * @param <T> 消息类型
-//     * @return 发送结果
-//     */
-//    public <T> boolean sendTransactionSync(String topic, String tags, T msg) {
-//        try {
-//            // 构建完整的destination
-//            String destination = MqUtils.topicWithTag(topic, tags);
-//            // 发送事务消息
-//            SendResult result = rocketMQTemplate.sendMessageInTransaction(
-//                    destination,
-//                    MessageBuilder.withPayload(msg).build(),
-//                    null
-//            );
-//            // 检查发送状态
-//            if (result != null && SendStatus.SEND_OK.equals(result.getSendStatus())) {
-//                log.info("事务消息发送成功，destination={}, msgId={}", destination, result.getMsgId());
-//                return true;
-//            } else {
-//                log.warn("事务消息发送状态非OK，destination={}, sendStatus={}", destination, result != null ? result.getSendStatus() : "null");
-//                return false;
-//            }
-//        } catch (Exception e) {
-//            log.error("发送事务消息时发生异常，topic={}, tags={}", topic, tags, e);
-//            return false;
-//        }
-//    }
-//
-//    /**
-//     * 根据topic:tags发送延迟消息（同步）
-//     * @param topic 主题
-//     * @param tags 标签
-//     * @param msg 消息内容
-//     * @param delayLevel 延时消息一共分为18个等级分别为：1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h
-//     * @param <T> 消息类型
-//     * @return 发送结果
-//     */
-//    public <T> boolean sendDelaySync(String topic, String tags, T msg, int delayLevel) {
-//        if (delayLevel <= 0) {
-//            log.error("延迟级别必须大于0，无法发送延迟消息");
-//            return false;
-//        }
-//
-//        try {
-//            // 构建完整的destination
-//            String destination = MqUtils.topicWithTag(topic, tags);
-//
-//            // 创建消息
-//            org.springframework.messaging.Message<T> message = MessageBuilder.withPayload(msg).build();
-//
-//            // 发送延迟消息，设置延迟级别
-//            /**
-//             * 3000 是超时时间，设置为 3000 毫秒（即 3 秒）。这意味着：
-//             * 生产者发送消息后会等待最多 3 秒
-//             * 如果 3 秒内没有收到 Broker 的响应，发送操作将失败
-//             * 这可以防止生产者长时间阻塞在发送操作上
-//             *
-//             * 注意！不是延迟时间！
-//             */
-//            SendResult result = rocketMQTemplate.syncSend(destination, message, 3000, delayLevel);
-//
-//            // 检查发送状态
-//            if (result != null && SendStatus.SEND_OK.equals(result.getSendStatus())) {
-//                log.info("延迟消息发送成功，destination={}, delayLevel={}, msgId={}",
-//                        destination, delayLevel, result.getMsgId());
-//                return true;
-//            } else {
-//                log.warn("延迟消息发送状态非OK，destination={}, delayLevel={}, sendStatus={}",
-//                        destination, delayLevel, result != null ? result.getSendStatus() : "null");
-//                return false;
-//            }
-//        } catch (Exception e) {
-//            log.error("发送延迟消息时发生异常，topic={}, tags={}, delayLevel={}",
-//                    topic, tags, delayLevel, e);
-//            return false;
-//        }
-//    }
-//}
+package com.tianji.common.autoconfigure.mq;
+
+import cn.hutool.core.lang.UUID;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.client.producer.SendResult;
+import org.apache.rocketmq.client.producer.SendStatus;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.messaging.support.MessageBuilder;
+
+/**
+ * RocketMQ消息发送助手
+ * 
+ * 基于RocketMQ实现消息异步解耦：
+ * - 支持同步发送、异步发送
+ * - 支持事务消息
+ * - 支持延迟消息
+ * 
+ * 配合本地消息表 + XXL-Job定时扫描补偿机制，
+ * 确保消息在异常情况下的最终一致性
+ */
+@Slf4j
+public class RocketMqHelper {
+
+    private final RocketMQTemplate rocketMQTemplate;
+
+    @Value("${rocketmq.producer.send-message-timeout:3000}")
+    private int sendTimeout;
+
+    public RocketMqHelper(RocketMQTemplate rocketMQTemplate) {
+        this.rocketMQTemplate = rocketMQTemplate;
+    }
+
+    /**
+     * 同步发送消息
+     *
+     * @param topic 主题
+     * @param msg   消息内容
+     * @param <T>   消息类型
+     * @return 发送结果
+     */
+    public <T> boolean sendSync(String topic, T msg) {
+        return sendSync(topic, null, msg);
+    }
+
+    /**
+     * 同步发送消息（带标签）
+     *
+     * @param topic 主题
+     * @param tags  标签
+     * @param msg   消息内容
+     * @param <T>   消息类型
+     * @return 发送结果
+     */
+    public <T> boolean sendSync(String topic, String tags, T msg) {
+        try {
+            String destination = tags != null ? topic + ":" + tags : topic;
+            SendResult result = rocketMQTemplate.syncSend(destination, msg);
+            boolean success = SendStatus.SEND_OK.equals(result.getSendStatus());
+            if (success) {
+                log.info("消息发送成功，topic={}, tags={}, msgId={}", topic, tags, result.getMsgId());
+            } else {
+                log.warn("消息发送状态非OK，topic={}, tags={}, sendStatus={}", 
+                        topic, tags, result.getSendStatus());
+            }
+            return success;
+        } catch (Exception e) {
+            log.error("消息发送失败，topic={}, tags={}", topic, tags, e);
+            return false;
+        }
+    }
+
+    /**
+     * 异步发送消息
+     *
+     * @param topic    主题
+     * @param msg      消息内容
+     * @param callback 回调函数
+     * @param <T>      消息类型
+     */
+    public <T> void sendAsync(String topic, T msg, SendCallback callback) {
+        sendAsync(topic, null, msg, callback);
+    }
+
+    /**
+     * 异步发送消息（带标签）
+     *
+     * @param topic    主题
+     * @param tags     标签
+     * @param msg      消息内容
+     * @param callback 回调函数
+     * @param <T>      消息类型
+     */
+    public <T> void sendAsync(String topic, String tags, T msg, SendCallback callback) {
+        String destination = tags != null ? topic + ":" + tags : topic;
+        rocketMQTemplate.asyncSend(destination, msg, new org.apache.rocketmq.client.producer.SendCallback() {
+            @Override
+            public void onSuccess(SendResult sendResult) {
+                log.info("异步消息发送成功，topic={}, tags={}, msgId={}", topic, tags, sendResult.getMsgId());
+                if (callback != null) {
+                    callback.onSuccess(sendResult);
+                }
+            }
+
+            @Override
+            public void onException(Throwable e) {
+                log.error("异步消息发送失败，topic={}, tags={}", topic, tags, e);
+                if (callback != null) {
+                    callback.onException(e);
+                }
+            }
+        });
+    }
+
+    /**
+     * 发送事务消息
+     *
+     * @param topic 主题
+     * @param tags  标签
+     * @param msg   消息内容
+     * @param <T>   消息类型
+     * @return 发送结果
+     */
+    public <T> boolean sendTransaction(String topic, String tags, T msg) {
+        try {
+            String destination = tags != null ? topic + ":" + tags : topic;
+            SendResult result = rocketMQTemplate.sendMessageInTransaction(
+                    destination,
+                    MessageBuilder.withPayload(msg).setHeader("msgId", UUID.randomUUID().toString()).build(),
+                    null
+            );
+            boolean success = result != null && SendStatus.SEND_OK.equals(result.getSendStatus());
+            if (success) {
+                log.info("事务消息发送成功，destination={}, msgId={}", destination, result.getMsgId());
+            }
+            return success;
+        } catch (Exception e) {
+            log.error("事务消息发送失败，topic={}, tags={}", topic, tags, e);
+            return false;
+        }
+    }
+
+    /**
+     * 发送延迟消息
+     * 
+     * 延迟级别：
+     * 1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h
+     *
+     * @param topic      主题
+     * @param tags       标签
+     * @param msg        消息内容
+     * @param delayLevel 延迟级别（1-18）
+     * @param <T>        消息类型
+     * @return 发送结果
+     */
+    public <T> boolean sendDelay(String topic, String tags, T msg, int delayLevel) {
+        if (delayLevel <= 0 || delayLevel > 18) {
+            log.error("延迟级别必须在1-18之间，当前值: {}", delayLevel);
+            return false;
+        }
+
+        try {
+            String destination = tags != null ? topic + ":" + tags : topic;
+            SendResult result = rocketMQTemplate.syncSend(
+                    destination,
+                    MessageBuilder.withPayload(msg).build(),
+                    sendTimeout,
+                    delayLevel
+            );
+            boolean success = result != null && SendStatus.SEND_OK.equals(result.getSendStatus());
+            if (success) {
+                log.info("延迟消息发送成功，topic={}, delayLevel={}, msgId={}", topic, delayLevel, result.getMsgId());
+            }
+            return success;
+        } catch (Exception e) {
+            log.error("延迟消息发送失败，topic={}, delayLevel={}", topic, delayLevel, e);
+            return false;
+        }
+    }
+
+    /**
+     * 发送回调接口
+     */
+    public interface SendCallback {
+        void onSuccess(SendResult sendResult);
+        void onException(Throwable e);
+    }
+}

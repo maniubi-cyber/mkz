@@ -107,5 +107,9 @@ public class Coupon implements Serializable {
     @ApiModelProperty(value = "更新人")
     private Long updater;
 
+    @ApiModelProperty(value = "版本号，用于乐观锁")
+    @Version
+    private Integer version;
+
 
 }
