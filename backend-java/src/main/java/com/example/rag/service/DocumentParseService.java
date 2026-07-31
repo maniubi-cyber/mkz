@@ -5,6 +5,8 @@ import com.example.rag.entity.Document;
 import com.example.rag.mapper.DocumentMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -50,6 +52,11 @@ public class DocumentParseService {
      * @param docId 文档 ID
      */
     @Async
+    @Retryable(
+            retryFor = {RuntimeException.class},
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 1000, multiplier = 2)
+    )
     public void triggerParseAsync(Long docId) {
         log.info("开始异步解析文档: docId={}", docId);
 
