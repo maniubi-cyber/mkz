@@ -177,4 +177,38 @@ public class DocumentController {
         DocumentResponse doc = documentService.reparse(id);
         return Result.success("重新解析已触发", doc);
     }
+
+    // ==================== 文档导出 ====================
+
+    @Operation(
+            summary = "导出文档",
+            description = """
+                    将文档导出为指定格式。
+                    支持格式：pdf / word / markdown
+                    使用策略模式 + 工厂模式，新增格式无需修改业务代码。
+                    """
+    )
+    @GetMapping("/{id}/export")
+    public void exportDocument(
+            @Parameter(description = "文档 ID", required = true, example = "1")
+            @PathVariable Long id,
+
+            @Parameter(description = "导出格式：pdf / word / markdown", required = true, example = "pdf")
+            @RequestParam("format") String format,
+
+            jakarta.servlet.http.HttpServletResponse response
+    ) throws Exception {
+        java.io.ByteArrayOutputStream outputStream = documentService.exportDocument(id, format);
+        DocumentResponse doc = documentService.getById(id);
+
+        String filename = documentService.getExportFilename(doc, format);
+        String contentType = documentService.getExportContentType(format);
+
+        response.setContentType(contentType);
+        response.setHeader("Content-Disposition",
+                "attachment; filename=\"" + java.net.URLEncoder.encode(filename, "UTF-8") + "\"");
+        response.setContentLength(outputStream.size());
+        outputStream.writeTo(response.getOutputStream());
+        outputStream.close();
+    }
 }

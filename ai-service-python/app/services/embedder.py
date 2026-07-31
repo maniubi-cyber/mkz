@@ -1,4 +1,4 @@
-"""
+﻿"""
 Embedding Service
 
 Loads a sentence-transformers model and provides batch / single-query
@@ -6,7 +6,7 @@ embedding with L2 normalization.
 
 After normalization:
     cosine_similarity(a, b) = dot(a, b)
-This is Qdrant's expected format for COSINE similarity search.
+This is Chroma's expected format for COSINE similarity search.
 """
 
 from __future__ import annotations

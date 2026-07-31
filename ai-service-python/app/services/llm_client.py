@@ -1,4 +1,4 @@
-"""
+﻿"""
 LLM Client Service
 
 OpenAI-compatible client configured for DeepSeek (default).
@@ -169,6 +169,8 @@ class LLMClient:
             "LLM stream done: total_chars=%d, usage=%s",
             sum(len(c) for c in accumulated), usage_info,
         )
+
+        return usage_info
 
     # ---- Private ----
 

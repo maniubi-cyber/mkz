@@ -1,4 +1,4 @@
-"""
+﻿"""
 Enterprise Knowledge Base RAG Q&A System — AI Service (FastAPI)
 
 Entry point for the Python AI microservice.
@@ -61,15 +61,15 @@ async def lifespan(app: FastAPI):
                 settings.EMBEDDING_DEVICE)
     logger.info("[AI Service] LLM         : %s @ %s",
                 settings.LLM_MODEL_NAME, settings.LLM_PROVIDER)
-    logger.info("[AI Service] Qdrant      : %s:%d",
-                settings.QDRANT_HOST, settings.QDRANT_PORT)
+    logger.info("[AI Service] Chroma      : %s:%d",
+                settings.Chroma_HOST, settings.Chroma_PORT)
     logger.info("[AI Service] MinIO       : %s (bucket=%s)",
                 settings.MINIO_ENDPOINT, settings.MINIO_BUCKET)
     logger.info("=" * 60)
 
     # Initialize services (lazy, on first use)
     # - Embedding model will be loaded on first /ai/search or /ai/chat call
-    # - Qdrant client will be connected on first vector operation
+    # - Chroma client will be connected on first vector operation
     # - LLM client will be configured on first /ai/chat call
 
     yield

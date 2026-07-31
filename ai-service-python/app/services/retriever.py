@@ -1,13 +1,13 @@
-"""
+﻿"""
 Hybrid Retriever
 
-Combines vector semantic search (Qdrant) with keyword search (BM25)
+Combines vector semantic search (Chroma) with keyword search (BM25)
 via Reciprocal Rank Fusion (RRF), then applies permission filtering.
 
 Pipeline::
 
     query
-      ├─→ Embedder.embed_query() → Qdrant.query()        (vector results)
+      ├─→ Embedder.embed_query() → Chroma.query()        (vector results)
       ├─→ BM25IndexManager.search()                       (keyword results)
       ├─→ _rrf_fusion(vec_results, bm25_results, k=60)   (merged ranking)
       └─→ _apply_permission_filter(merged, user, role)    (access control)
@@ -162,14 +162,14 @@ class HybridRetriever:
         self, kb_id: int, query: str, top_k: int,
     ) -> list[dict[str, Any]]:
         """
-        Execute vector similarity search via Qdrant.
+        Execute vector similarity search via Chroma.
 
         Returns list of dicts with keys: id, content, distance, metadata.
-        Qdrant COSINE returns similarity score (0~1), higher = more similar.
+        Chroma COSINE returns similarity score (0~1), higher = more similar.
         """
         try:
             q_vec = self._embedder.embed_query(query)
-            qdrant_result = self._vector_store.query(
+            Chroma_result = self._vector_store.query(
                 kb_id=kb_id,
                 query_embedding=q_vec.tolist(),
                 top_k=top_k,
@@ -178,15 +178,15 @@ class HybridRetriever:
             logger.warning("Vector search failed: %s", e)
             return []
 
-        # Qdrant returns nested lists (one per query)
-        ids = qdrant_result.get("ids", [[]])[0]
-        documents = qdrant_result.get("documents", [[]])[0]
-        metadatas = qdrant_result.get("metadatas", [[]])[0]
-        distances = qdrant_result.get("distances", [[]])[0]
+        # Chroma returns nested lists (one per query)
+        ids = Chroma_result.get("ids", [[]])[0]
+        documents = Chroma_result.get("documents", [[]])[0]
+        metadatas = Chroma_result.get("metadatas", [[]])[0]
+        distances = Chroma_result.get("distances", [[]])[0]
 
         results: list[dict[str, Any]] = []
         for i in range(len(ids)):
-            # Qdrant COSINE similarity: distance = 1 - score
+            # Chroma COSINE similarity: distance = 1 - score
             distance = distances[i] if i < len(distances) else 1.0
             similarity = max(0.0, min(1.0, 1.0 - distance))
             meta = metadatas[i] if i < len(metadatas) else {}

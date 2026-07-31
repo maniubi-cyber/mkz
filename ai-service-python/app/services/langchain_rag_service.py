@@ -1,18 +1,18 @@
-"""
+﻿"""
 LangChain RAG Service - 基于 LangChain 的检索增强生成服务
 
 核心设计:
 - 文档元数据: MySQL
-- 父切块 (Parent Chunks): Qdrant 向量数据库存储
+- 父切块 (Parent Chunks): Chroma 向量数据库存储
 - 子切块 (Child Chunks): Redis 缓存存储
 
-Qdrant 优势:
+Chroma 优势:
 - 轻量级部署，单二进制无需 etcd/MinIO 依赖
 - 丰富的 payload 过滤条件
 - 生产环境稳定，支持分布式扩展
 
 父子切块策略:
-1. 文档被切成较大的父切块（1000字符），每个父切块生成向量存入 Qdrant
+1. 文档被切成较大的父切块（1000字符），每个父切块生成向量存入 Chroma
 2. 每个父切块再细分为子切块（200字符），存入 Redis 缓存
 3. 检索时先通过向量检索找到相关父切块，再从 Redis 获取子切块进行精确匹配
 4. 最终将最相关的子切块作为上下文送入 LLM 生成答案
@@ -48,7 +48,7 @@ class ChildChunk:
 
 @dataclass
 class ParentChunk:
-    """父切块 - 存储在 Qdrant 向量数据库中"""
+    """父切块 - 存储在 Chroma 向量数据库中"""
     id: str
     document_id: int
     kb_id: int
@@ -348,7 +348,7 @@ class RedisChildChunkStore:
 
 
 # ============================================================
-# LangChain RAG Service (使用 Qdrant 向量存储)
+# LangChain RAG Service (使用 Chroma 向量存储)
 # ============================================================
 
 class LangChainRAGService:
@@ -356,7 +356,7 @@ class LangChainRAGService:
     LangChain RAG 服务
 
     实现基于 LangChain 的检索增强生成:
-    1. 向量检索: 从 Qdrant 检索相关父切块
+    1. 向量检索: 从 Chroma 检索相关父切块
     2. 精确匹配: 从 Redis 获取子切块进行精确匹配
     3. 上下文组装: 将检索结果组装为 LLM 上下文
     4. 答案生成: 调用 LLM 生成最终答案
@@ -370,7 +370,7 @@ class LangChainRAGService:
 
     @property
     def vector_store(self):
-        """懒加载向量存储 (Qdrant)"""
+        """懒加载向量存储 (Chroma)"""
         if self._vector_store is None:
             from app.services.vector_store import get_vector_store
             self._vector_store = get_vector_store()
@@ -395,10 +395,10 @@ class LangChainRAGService:
         org_id: int,
     ) -> dict:
         """
-        索引文档到 Qdrant 和 Redis
+        索引文档到 Chroma 和 Redis
 
         1. 将文档切分为父切块和子切块
-        2. 父切块生成向量存入 Qdrant
+        2. 父切块生成向量存入 Chroma
         3. 子切块存入 Redis
         """
         # 1. 父子切块
@@ -412,7 +412,7 @@ class LangChainRAGService:
         # 2. 存储子切块到 Redis
         self.child_store.store_child_chunks(child_chunks)
 
-        # 3. 存储父切块到 Qdrant（带向量）
+        # 3. 存储父切块到 Chroma（带向量）
         from app.services.chunker import Chunk
         chunks = [Chunk(index=i, content=pc.content) for i, pc in enumerate(parent_chunks)]
 
@@ -441,7 +441,7 @@ class LangChainRAGService:
         检索相关文档片段
 
         1. 对 query 进行 embedding
-        2. 从 Qdrant 检索相关父切块
+        2. 从 Chroma 检索相关父切块
         3. 从 Redis 获取对应的子切块
         4. 返回最相关的结果
         """
@@ -450,8 +450,8 @@ class LangChainRAGService:
         # 1. 对 query 进行 embedding
         query_embedding = self.embedder.embed([query])[0].tolist()
 
-        # 2. 从 Qdrant 检索相关父切块
-        qdrant_results = self.vector_store.query(
+        # 2. 从 Chroma 检索相关父切块
+        Chroma_results = self.vector_store.query(
             kb_id=kb_id,
             query_embedding=query_embedding,
             top_k=top_k * 2,
@@ -459,16 +459,16 @@ class LangChainRAGService:
 
         results = []
 
-        if qdrant_results and qdrant_results.get("ids"):
-            ids = qdrant_results["ids"][0]
-            documents = qdrant_results.get("documents", [[]])[0]
-            distances = qdrant_results.get("distances", [[]])[0]
-            metadatas = qdrant_results.get("metadatas", [[]])[0]
+        if Chroma_results and Chroma_results.get("ids"):
+            ids = Chroma_results["ids"][0]
+            documents = Chroma_results.get("documents", [[]])[0]
+            distances = Chroma_results.get("distances", [[]])[0]
+            metadatas = Chroma_results.get("metadatas", [[]])[0]
 
             for i, chunk_id in enumerate(ids):
-                # Qdrant score 已在 vector_store 中转换为距离格式
+                # Chroma score 已在 vector_store 中转换为距离格式
                 distance = distances[i] if i < len(distances) else 1.0
-                # Qdrant COSINE 返回相似度，转换为 score
+                # Chroma COSINE 返回相似度，转换为 score
                 score = 1.0 - distance
 
                 if score < settings.RAG_SIMILARITY_THRESHOLD:

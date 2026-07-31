@@ -1,7 +1,12 @@
 package com.example.rag.config;
 
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.json.jackson.JacksonJsonpMapper;
+import co.elastic.clients.transport.ElasticsearchTransport;
+import co.elastic.clients.transport.rest_client.RestClientTransport;
 import lombok.extern.slf4j.Slf4j;
-import org.elasticsearch.client.RestHighLevelClient;
+import org.apache.http.HttpHost;
+import org.elasticsearch.client.RestClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,12 +17,9 @@ import org.springframework.data.elasticsearch.repository.config.EnableElasticsea
 import java.time.Duration;
 
 /**
- * Elasticsearch 配置类
+ * Elasticsearch 配置类 - Spring Data ES (ES 8.x Client)
  *
- * <h3>全文检索优化说明：</h3>
- * <p>原基于 MySQL LIKE '%keyword%' 的模糊搜索在数据量超 10 万条时耗时超 1.5s，
- * 引入 Elasticsearch 并配置 IK 中文分词器，将搜索响应降至 60ms，
- * 并支持按相关度排序和高亮显示。</p>
+ * <p>使用 ES 8.x 原生 Java API Client 替代已废弃的 RestHighLevelClient。</p>
  *
  * <h3>IK 分词器：</h3>
  * <ul>
@@ -56,45 +58,57 @@ public class ElasticsearchConfig extends ElasticsearchConfiguration {
 
     @Override
     public ClientConfiguration clientConfiguration() {
-        ClientConfiguration.MaybeSecureClientConfigurationBuilder builder =
-                ClientConfiguration.builder()
-                        .connectedTo(elasticsearchUrl.replace("http://", "").replace("https://", ""));
-
-        // 如果有用户名密码，则配置认证
-        if (username != null && !username.isEmpty()) {
-            builder.withBasicAuth(username, password);
-        }
-
-        return builder
+        return ClientConfiguration.builder()
+                .connectedTo(elasticsearchUrl.replace("http://", "").replace("https://", ""))
                 .withConnectTimeout(Duration.ofSeconds(10))
                 .withSocketTimeout(Duration.ofSeconds(30))
                 .build();
     }
 
     /**
-     * RestHighLevelClient Bean
-     * 用于执行底层的 Elasticsearch 操作（搜索、索引、删除等）
+     * 创建 ES 8.x 原生 Transport（供 ElasticsearchClient 使用）
      */
     @Bean
-    public RestHighLevelClient restHighLevelClient() {
-        org.elasticsearch.client.RestClientBuilder builder = org.elasticsearch.client.RestClient.builder(
-                org.apache.http.HttpHost.create(elasticsearchUrl)
+    public RestClient restClient() {
+        RestClient.Builder builder = RestClient.builder(
+                new HttpHost(
+                        elasticsearchUrl.replace("http://", "").replace("https://", "").split(":")[0],
+                        Integer.parseInt(elasticsearchUrl.replace("http://", "").replace("https://", "").split(":")[1]),
+                        "http"
+                )
         );
 
-        // 配置认证
         if (username != null && !username.isEmpty()) {
-            org.apache.http.auth.UsernamePasswordCredentials credentials =
-                    new org.apache.http.auth.UsernamePasswordCredentials(username, password);
-            org.apache.http.impl.client.BasicCredentialsProvider credentialsProvider =
-                    new org.apache.http.impl.client.BasicCredentialsProvider();
-            credentialsProvider.setCredentials(org.apache.http.auth.AuthScope.ANY, credentials);
-
-            builder.setHttpClientConfigCallback(httpClientBuilder ->
-                    httpClientBuilder.setDefaultCredentialsProvider(credentialsProvider)
+            builder.setHttpClientConfigCallback(hcb ->
+                    hcb.setDefaultCredentialsProvider(
+                            new org.apache.http.impl.client.BasicCredentialsProvider() {{
+                                setCredentials(
+                                        org.apache.http.auth.AuthScope.ANY,
+                                        new org.apache.http.auth.UsernamePasswordCredentials(username, password)
+                                );
+                            }}
+                    )
             );
         }
 
-        log.info("Elasticsearch RestHighLevelClient 初始化完成: {}", elasticsearchUrl);
-        return new RestHighLevelClient(builder);
+        builder.setRequestConfigCallback(rcb ->
+                rcb.setConnectTimeout(10_000).setSocketTimeout(30_000)
+        );
+
+        log.info("Elasticsearch RestClient 初始化完成: {}", elasticsearchUrl);
+        return builder.build();
+    }
+
+    /**
+     * ES 8.x 原生 Client（推荐）
+     */
+    @Bean
+    public ElasticsearchClient elasticsearchClient(RestClient restClient) {
+        ElasticsearchTransport transport = new RestClientTransport(
+                restClient, new JacksonJsonpMapper()
+        );
+        ElasticsearchClient client = new ElasticsearchClient(transport);
+        log.info("Elasticsearch ElasticsearchClient 初始化完成: {}", elasticsearchUrl);
+        return client;
     }
 }

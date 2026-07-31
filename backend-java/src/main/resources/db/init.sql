@@ -105,7 +105,7 @@ CREATE TABLE `document` (
     KEY `idx_is_deleted` (`is_deleted`),
     KEY `idx_title` (`title`),
     KEY `idx_create_time` (`create_time`),
-    FULLTEXT KEY `ft_title_content` (`title`, `content`) WITH PARSER ngram COMMENT '全文检索索引'
+    
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档表';
 
 -- ----------------------------

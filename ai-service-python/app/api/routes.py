@@ -1,4 +1,4 @@
-"""
+﻿"""
 API Route Definitions
 
 REST endpoints for the AI service.
@@ -88,7 +88,7 @@ def create_health_router() -> APIRouter:
     1. **MinIO 下载**
     2. **文本提取** (PDF/DOCX/XLSX/TXT/MD)
     3. **文本切分** (TextChunker)
-    4. **向量化 + 写入 Qdrant** (BGE-large-zh → kb_{id})
+    4. **向量化 + 写入 Chroma** (BGE-large-zh → kb_{id})
     5. **重建 BM25 索引** (jieba 分词 → BM25Okapi)
 
     每解析一个文档后自动重建该 KB 的 BM25 全文索引，
@@ -105,7 +105,7 @@ async def parse_document(request: ParseRequest):
     """
     Full document parsing pipeline.
 
-    parse → chunk → embed → Qdrant → BM25 rebuild
+    parse → chunk → embed → Chroma → BM25 rebuild
     """
     t_total = time.perf_counter()
 
@@ -148,7 +148,7 @@ async def parse_document(request: ParseRequest):
     chunks = chunk_text(raw_text)
     t_chunk = (time.perf_counter() - t_step) * 1000
 
-    # ---- Step 4: Embed + Write to Qdrant ----
+    # ---- Step 4: Embed + Write to Chroma ----
     t_step = time.perf_counter()
 
     store = get_vector_store()
@@ -214,14 +214,14 @@ async def parse_document(request: ParseRequest):
     "/vectors/delete",
     response_model=dict,
     summary="删除文档向量",
-    description="删除指定文档在 Qdrant 向量库中的所有向量数据。",
+    description="删除指定文档在 Chroma 向量库中的所有向量数据。",
     responses={
         200: {"description": "删除成功"},
         400: {"model": ErrorResult},
     },
 )
 async def delete_vectors(request: VectorDeleteRequest):
-    """Delete all vectors for a document from Qdrant."""
+    """Delete all vectors for a document from Chroma."""
     logger.info("删除向量: doc_id=%d, kb_id=%d", request.doc_id, request.kb_id)
 
     store = get_vector_store()
@@ -248,7 +248,7 @@ async def delete_vectors(request: VectorDeleteRequest):
     description="""
     **混合检索流水线：**
 
-    1. **向量语义检索** — Embed query → Qdrant similarity search
+    1. **向量语义检索** — Embed query → Chroma similarity search
     2. **BM25 关键词检索** — jieba 分词 → BM25Okapi 索引查询
     3. **RRF 融合** — Reciprocal Rank Fusion (k=60)
        - `score = alpha * vec_rrf + (1-alpha) * bm25_rrf`

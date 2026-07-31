@@ -18,7 +18,7 @@
 | FastAPI | 0.111+ | Python AI 服务框架 |
 | LangChain | 0.2+ | RAG 框架 |
 | MySQL | 8.0 | 文档元数据存储（MyBatis-Plus + 乐观锁） |
-| Qdrant | 1.7+ | 向量数据库（父切块存储） |
+| Chroma | 0.4+ | 向量数据库（嵌入式，父切块存储） |
 | WebSocket | - | 实时协作编辑（OT 算法 + 光标同步） |
 | MinIO | - | 文件对象存储 |
 | Docker Compose | - | 一键部署所有基础设施 |
@@ -57,7 +57,7 @@
 ┌─────────────────┐              ┌─────────────────────────────┐
 │   MySQL + ES    │              │   Python AI 服务 (FastAPI)  │
 │   Redis + MinIO │◄─OpenFeign──►│   LangChain RAG Pipeline    │
-│                 │              │   Qdrant (向量存储)          │
+│                 │              │   Chroma (向量存储)          │
 └─────────────────┘              └─────────────────────────────┘
 ```
 
@@ -165,21 +165,21 @@ Map<String, Object> response = aiServiceClient.parseDocument(requestBody);
 
 ---
 
-### 6. RAG 智能问答（LangChain + Qdrant）
+### 6. RAG 智能问答（LangChain + Chroma）
 
 团队文档查询效率低，基于 **LangChain** 设计问答系统：
 
 **父子切块策略（Parent-Child Chunking）：**
 | 切块类型 | 大小 | 存储 | 用途 |
 |----------|------|------|------|
-| 父切块 | 1000字符 | Qdrant | 向量检索召回，保持完整段落结构 |
+| 父切块 | 1000字符 | Chroma | 向量检索召回，保持完整段落结构 |
 | 子切块 | 200字符 | Redis | 精确匹配和 LLM 输入，减少 token 消耗 |
 
-**Qdrant 优势:**
-- 轻量级部署，单二进制无需 etcd/MinIO 依赖
-- 丰富的 payload 过滤条件
-- 生产环境稳定，支持分布式扩展
-- REST + gRPC 双协议，Python SDK 成熟
+**Chroma 优势:**
+- 嵌入式向量数据库，无需独立服务部署
+- 支持持久化存储到磁盘
+- 内置 HNSW 索引，搜索效率高
+- REST API + Python SDK 双协议
 
 ---
 
@@ -229,7 +229,7 @@ docker-compose ps
 | Sentinel 控制台 | http://localhost:8081 | 默认账号: sentinel/sentinel |
 | Kibana | http://localhost:5601 | ES 可视化管理 |
 | MinIO 控制台 | http://localhost:9001 | 默认账号: minioadmin/minioadmin |
-| Qdrant 控制台 | http://localhost:6333 | Qdrant REST API |
+| Chroma 数据 | ./ai-service-python/data/chroma | Chroma 持久化存储 |
 | Swagger UI | http://localhost:8080/doc.html | API 文档 |
 | WebSocket | ws://localhost:8080/ws/doc/{docId} | 实时协作编辑 |
 
@@ -271,7 +271,7 @@ knowledge-rag-system-main/
 │   │   ├── schemas/                  # 请求/响应模型
 │   │   ├── services/
 │   │   │   ├── langchain_rag_service.py  # LangChain RAG 服务
-│   │   │   ├── vector_store.py       # Qdrant 向量存储
+│   │   │   ├── vector_store.py       # Chroma 向量存储
 │   │   │   ├── embedder.py           # Embedding 模型
 │   │   │   ├── llm_client.py         # LLM 客户端
 │   │   │   ├── chunker.py            # 文本切块（父子切块）

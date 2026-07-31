@@ -11,28 +11,21 @@ import com.example.rag.mapper.UserMapper;
 import com.example.rag.service.DocumentSearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.elasticsearch.action.search.SearchRequest;
-import org.elasticsearch.action.search.SearchResponse;
-import org.elasticsearch.client.RequestOptions;
-import org.elasticsearch.client.RestHighLevelClient;
-import org.elasticsearch.common.text.Text;
-import org.elasticsearch.index.query.BoolQueryBuilder;
-import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.search.SearchHit;
-import org.elasticsearch.search.builder.SearchSourceBuilder;
-import org.elasticsearch.search.fetch.subphase.highlight.HighlightBuilder;
-import org.elasticsearch.search.fetch.subphase.highlight.HighlightField;
-import org.elasticsearch.search.sort.SortOrder;
 import org.springframework.stereotype.Service;
 
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.query_dsl.*;
+import co.elastic.clients.elasticsearch.core.*;
+import co.elastic.clients.elasticsearch.core.search.*;
+import co.elastic.clients.json.JsonData;
+
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 /**
- * 文档搜索服务实现 - 基于 Elasticsearch + IK 中文分词器
+ * 文档搜索服务实现 - 基于 Elasticsearch + IK 中文分词器 (Spring Data ES 8.x)
  *
  * <p>原基于 MySQL LIKE '%keyword%' 的模糊搜索在数据量超 10 万条时耗时超 1.5s，
  * 引入 Elasticsearch 并配置 IK 中文分词器，将搜索响应降至 60ms，
@@ -45,7 +38,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DocumentSearchServiceImpl implements DocumentSearchService {
 
-    private final RestHighLevelClient elasticsearchClient;
+    private final ElasticsearchClient elasticsearchClient;
     private final DocumentMapper documentMapper;
     private final UserMapper userMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
@@ -58,15 +51,6 @@ public class DocumentSearchServiceImpl implements DocumentSearchService {
 
     /**
      * 全文搜索文档
-     *
-     * <h3>搜索策略：</h3>
-     * <ul>
-     *   <li>使用 bool query 组合 must（关键词匹配）+ filter（权限过滤）</li>
-     *   <li>多字段匹配：title^3（标题权重3倍）+ content（内容权重1倍）</li>
-     *   <li>使用 IK smart 分词器进行查询分词</li>
-     *   <li>高亮显示匹配的关键词</li>
-     *   <li>按相关度评分排序</li>
-     * </ul>
      */
     @Override
     public List<DocumentSearchResponse> search(String keyword, Long kbId, int page, int size,
@@ -74,11 +58,38 @@ public class DocumentSearchServiceImpl implements DocumentSearchService {
         long startTime = System.currentTimeMillis();
 
         try {
-            SearchRequest searchRequest = buildSearchRequest(keyword, kbId, page, size, userId, orgId);
-            SearchResponse response = elasticsearchClient.search(searchRequest, RequestOptions.DEFAULT);
+            SearchRequest.Builder requestBuilder = new SearchRequest.Builder()
+                    .index(INDEX_NAME)
+                    .from((page - 1) * size)
+                    .size(size)
+                    .sort(s -> s.score(sc -> sc.order(co.elastic.clients.elasticsearch._types.SortOrder.Desc)));
+
+            // 构建查询条件
+            BoolQuery boolQuery = buildBoolQuery(keyword, kbId, userId, orgId);
+            requestBuilder.query(q -> q.bool(boolQuery));
+
+            // 高亮配置
+            requestBuilder.highlight(h -> h
+                    .preTags(HIGHLIGHT_PRE_TAG)
+                    .postTags(HIGHLIGHT_POST_TAG)
+                    .fields("title", f -> f.fragmentSize(HIGHLIGHT_FRAGMENT_SIZE).numberOfFragments(1))
+                    .fields("content", f -> f.fragmentSize(HIGHLIGHT_FRAGMENT_SIZE).numberOfFragments(HIGHLIGHT_NUM_FRAGMENTS))
+                    .requireFieldMatch(false)
+            );
+
+            // 只返回必要字段
+            requestBuilder.source(s -> s.filter(f -> f.includes(
+                    "id", "title", "kbId", "ownerId", "ownerName",
+                    "visibility", "createTime", "fileType"
+            )));
+
+            SearchResponse<DocumentSearchIndex> response = elasticsearchClient.search(
+                    requestBuilder.build(),
+                    DocumentSearchIndex.class
+            );
 
             List<DocumentSearchResponse> results = new ArrayList<>();
-            for (SearchHit hit : response.getHits().getHits()) {
+            for (Hit<DocumentSearchIndex> hit : response.hits().hits()) {
                 DocumentSearchResponse doc = parseSearchHit(hit);
                 if (doc != null) {
                     results.add(doc);
@@ -98,9 +109,16 @@ public class DocumentSearchServiceImpl implements DocumentSearchService {
     @Override
     public long countSearch(String keyword, Long kbId, Long userId, Long orgId) {
         try {
-            SearchRequest searchRequest = buildSearchRequest(keyword, kbId, 1, 0, userId, orgId);
-            SearchResponse response = elasticsearchClient.search(searchRequest, RequestOptions.DEFAULT);
-            return response.getHits().getTotalHits().value;
+            BoolQuery boolQuery = buildBoolQuery(keyword, kbId, userId, orgId);
+
+            CountRequest countRequest = new CountRequest.Builder()
+                    .index(INDEX_NAME)
+                    .query(q -> q.bool(boolQuery))
+                    .build();
+
+            long count = elasticsearchClient.count(countRequest).count();
+            log.debug("ES计数: keyword={}, count={}", keyword, count);
+            return count;
         } catch (IOException e) {
             log.error("ES计数异常: keyword={}", keyword, e);
             return 0;
@@ -132,11 +150,13 @@ public class DocumentSearchServiceImpl implements DocumentSearchService {
                     .chunkCount(doc.getChunkCount())
                     .build();
 
-            org.elasticsearch.action.index.IndexRequest request = new org.elasticsearch.action.index.IndexRequest(INDEX_NAME)
+            IndexRequest request = IndexRequest.of(r -> r
+                    .index(INDEX_NAME)
                     .id(String.valueOf(docId))
-                    .source(convertToIndexMap(index));
+                    .document(index)
+            );
 
-            elasticsearchClient.index(request, RequestOptions.DEFAULT);
+            elasticsearchClient.index(request);
             log.info("文档索引成功: docId={}, title={}", docId, doc.getTitle());
         } catch (IOException e) {
             log.error("文档索引失败: docId={}", docId, e);
@@ -147,8 +167,11 @@ public class DocumentSearchServiceImpl implements DocumentSearchService {
     @Override
     public void deleteDocumentIndex(Long docId) {
         try {
-            org.elasticsearch.delete.DeleteRequest request = new org.elasticsearch.delete.DeleteRequest(INDEX_NAME, String.valueOf(docId));
-            elasticsearchClient.delete(request, RequestOptions.DEFAULT);
+            DeleteRequest request = DeleteRequest.of(r -> r
+                    .index(INDEX_NAME)
+                    .id(String.valueOf(docId))
+            );
+            elasticsearchClient.delete(request);
             log.info("文档索引已删除: docId={}", docId);
         } catch (IOException e) {
             log.error("删除文档索引失败: docId={}", docId, e);
@@ -160,9 +183,8 @@ public class DocumentSearchServiceImpl implements DocumentSearchService {
         log.info("开始重建所有文档索引...");
         try {
             // 删除旧索引
-            org.elasticsearch.indices.DeleteIndexRequest deleteRequest = new org.elasticsearch.indices.DeleteIndexRequest(INDEX_NAME);
             try {
-                elasticsearchClient.indices().delete(deleteRequest, RequestOptions.DEFAULT);
+                elasticsearchClient.indices().delete(d -> d.index(INDEX_NAME));
             } catch (Exception e) {
                 log.warn("删除旧索引失败（可能不存在）: {}", e.getMessage());
             }
@@ -185,170 +207,101 @@ public class DocumentSearchServiceImpl implements DocumentSearchService {
 
     // ==================== 私有方法 ====================
 
-    /**
-     * 构建搜索请求
-     */
-    private SearchRequest buildSearchRequest(String keyword, Long kbId, int page, int size,
-                                             Long userId, Long orgId) {
-        SearchRequest searchRequest = new SearchRequest(INDEX_NAME);
-        SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+    private BoolQuery buildBoolQuery(String keyword, Long kbId, Long userId, Long orgId) {
+        BoolQuery.Builder boolBuilder = new BoolQuery.Builder();
 
-        // 1. 构建查询条件
-        BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
-
-        // 1.1 关键词匹配（多字段加权）
+        // 关键词匹配（多字段加权）
         if (keyword != null && !keyword.trim().isEmpty()) {
-            BoolQueryBuilder keywordQuery = QueryBuilders.boolQuery();
+            BoolQuery.Builder keywordBuilder = new BoolQuery.Builder();
             // 标题匹配（权重3倍）
-            keywordQuery.should(QueryBuilders.matchQuery("title", keyword).boost(3.0f));
+            keywordBuilder.should(s -> s.match(m -> m
+                    .field("title").query(keyword).boost(3.0f)));
             // 内容匹配（权重1倍）
-            keywordQuery.should(QueryBuilders.matchQuery("content", keyword).boost(1.0f));
+            keywordBuilder.should(s -> s.match(m -> m
+                    .field("content").query(keyword).boost(1.0f)));
             // 短语匹配（精确短语权重更高）
-            keywordQuery.should(QueryBuilders.matchPhraseQuery("title", keyword).boost(5.0f));
-            keywordQuery.should(QueryBuilders.matchPhraseQuery("content", keyword).boost(2.0f));
-            keywordQuery.minimumShouldMatch(1);
-            boolQuery.must(keywordQuery);
+            keywordBuilder.should(s -> s.matchPhrase(mp -> mp
+                    .field("title").query(keyword).boost(5.0f)));
+            keywordBuilder.should(s -> s.matchPhrase(mp -> mp
+                    .field("content").query(keyword).boost(2.0f)));
+            keywordBuilder.minimumShouldMatch("1");
+            boolBuilder.must(m -> m.bool(keywordBuilder.build()));
         } else {
-            boolQuery.must(QueryBuilders.matchAllQuery());
+            boolBuilder.must(m -> m.matchAll(ma -> ma));
         }
 
-        // 1.2 权限过滤
-        BoolQueryBuilder permissionFilter = QueryBuilders.boolQuery();
+        // 权限过滤
+        BoolQuery.Builder permissionBuilder = new BoolQuery.Builder();
         // 公开文档
-        permissionFilter.should(QueryBuilders.termQuery("visibility", "PUBLIC"));
+        permissionBuilder.should(s -> s.term(t -> t
+                .field("visibility").value(JsonData.of("PUBLIC"))));
         // 自己创建的文档
         if (userId != null) {
-            permissionFilter.should(QueryBuilders.termQuery("ownerId", userId));
+            permissionBuilder.should(s -> s.term(t -> t
+                    .field("ownerId").value(JsonData.of(userId))));
         }
         // 组织内文档
         if (orgId != null) {
-            permissionFilter.should(QueryBuilders.boolQuery()
-                    .must(QueryBuilders.termQuery("visibility", "ORG"))
-                    .must(QueryBuilders.termQuery("orgId", orgId))
-            );
+            permissionBuilder.should(s -> s.bool(b -> b
+                    .must(m -> m.term(t -> t
+                            .field("visibility").value(JsonData.of("ORG"))))
+                    .must(m -> m.term(t -> t
+                            .field("orgId").value(JsonData.of(orgId))))
+            ));
         }
-        boolQuery.filter(permissionFilter);
+        boolBuilder.filter(f -> f.bool(permissionBuilder.build()));
 
-        // 1.3 知识库过滤
+        // 知识库过滤
         if (kbId != null) {
-            boolQuery.filter(QueryBuilders.termQuery("kbId", kbId));
+            boolBuilder.filter(f -> f.term(t -> t
+                    .field("kbId").value(JsonData.of(kbId))));
         }
 
-        sourceBuilder.query(boolQuery);
-
-        // 2. 高亮配置
-        HighlightBuilder highlightBuilder = new HighlightBuilder();
-        highlightBuilder.preTags(HIGHLIGHT_PRE_TAG);
-        highlightBuilder.postTags(HIGHLIGHT_POST_TAG);
-        highlightBuilder.field("title", HIGHLIGHT_FRAGMENT_SIZE, 1);
-        highlightBuilder.field("content", HIGHLIGHT_FRAGMENT_SIZE, HIGHLIGHT_NUM_FRAGMENTS);
-        highlightBuilder.requireFieldMatch(false);
-        sourceBuilder.highlighter(highlightBuilder);
-
-        // 3. 排序（按相关度降序）
-        sourceBuilder.sort("_score", SortOrder.DESC);
-
-        // 4. 分页
-        int from = (page - 1) * size;
-        sourceBuilder.from(from);
-        sourceBuilder.size(size);
-
-        // 5. 返回字段过滤（不需要返回完整内容，只要摘要）
-        sourceBuilder.fetchSource(new String[]{"id", "title", "kbId", "ownerId", "ownerName",
-                "visibility", "createTime", "fileType"}, null);
-
-        searchRequest.source(sourceBuilder);
-        return searchRequest;
+        return boolBuilder.build();
     }
 
-    /**
-     * 解析搜索结果
-     */
-    private DocumentSearchResponse parseSearchHit(SearchHit hit) {
-        Map<String, Object> source = hit.getSourceAsMap();
-        if (source == null) return null;
+    private DocumentSearchResponse parseSearchHit(Hit<DocumentSearchIndex> hit) {
+        DocumentSearchIndex doc = hit.source();
+        if (doc == null) return null;
 
         // 获取高亮内容
-        Map<String, HighlightField> highlightFields = hit.getHighlightFields();
-        String highlightedTitle = getHighlightedText(highlightFields, "title");
-        List<String> highlightFragments = getHighlightedFragments(highlightFields, "content");
+        Map<String, List<String>> highlightFields = hit.highlight();
+        String highlightedTitle = null;
+        List<String> highlightFragments = new ArrayList<>();
 
-        Long docId = Long.valueOf(source.get("id").toString());
-        String title = source.get("title") != null ? source.get("title").toString() : "";
+        if (highlightFields != null) {
+            List<String> titleHighlights = highlightFields.get("title");
+            if (titleHighlights != null && !titleHighlights.isEmpty()) {
+                highlightedTitle = titleHighlights.get(0);
+            }
+            List<String> contentHighlights = highlightFields.get("content");
+            if (contentHighlights != null) {
+                highlightFragments = contentHighlights;
+            }
+        }
+
+        String title = doc.getTitle() != null ? doc.getTitle() : "";
 
         // 查询知识库名称
         String kbName = "";
-        if (source.get("kbId") != null) {
-            Long kbId = Long.valueOf(source.get("kbId").toString());
-            KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
+        if (doc.getKbId() != null) {
+            KnowledgeBase kb = knowledgeBaseMapper.selectById(doc.getKbId());
             kbName = kb != null ? kb.getName() : "";
         }
 
         return DocumentSearchResponse.builder()
-                .id(docId)
+                .id(doc.getId())
                 .title(highlightedTitle != null ? highlightedTitle : title)
                 .titlePlain(title)
                 .contentSnippet(highlightFragments.isEmpty() ? "" : highlightFragments.get(0))
                 .highlightFragments(highlightFragments)
-                .kbId(source.get("kbId") != null ? Long.valueOf(source.get("kbId").toString()) : null)
+                .kbId(doc.getKbId())
                 .kbName(kbName)
-                .ownerId(source.get("ownerId") != null ? Long.valueOf(source.get("ownerId").toString()) : null)
-                .ownerName(source.get("ownerName") != null ? source.get("ownerName").toString() : "")
-                .fileType(source.get("fileType") != null ? source.get("fileType").toString() : "")
-                .score(hit.getScore())
-                .createTime(source.get("createTime") != null ?
-                        java.time.LocalDateTime.parse(source.get("createTime").toString()) : null)
+                .ownerId(doc.getOwnerId())
+                .ownerName(doc.getOwnerName() != null ? doc.getOwnerName() : "")
+                .fileType(doc.getFileType() != null ? doc.getFileType() : "")
+                .score(hit.score())
+                .createTime(doc.getCreateTime())
                 .build();
-    }
-
-    /**
-     * 获取高亮文本
-     */
-    private String getHighlightedText(Map<String, HighlightField> highlightFields, String fieldName) {
-        if (highlightFields == null || !highlightFields.containsKey(fieldName)) {
-            return null;
-        }
-        HighlightField field = highlightFields.get(fieldName);
-        Text[] fragments = field.fragments();
-        if (fragments.length > 0) {
-            return fragments[0].string();
-        }
-        return null;
-    }
-
-    /**
-     * 获取高亮片段列表
-     */
-    private List<String> getHighlightedFragments(Map<String, HighlightField> highlightFields, String fieldName) {
-        if (highlightFields == null || !highlightFields.containsKey(fieldName)) {
-            return new ArrayList<>();
-        }
-        HighlightField field = highlightFields.get(fieldName);
-        Text[] fragments = field.fragments();
-        List<String> result = new ArrayList<>();
-        for (Text fragment : fragments) {
-            result.add(fragment.string());
-        }
-        return result;
-    }
-
-    /**
-     * 转换索引对象为 Map
-     */
-    private Map<String, Object> convertToIndexMap(DocumentSearchIndex index) {
-        Map<String, Object> map = new java.util.HashMap<>();
-        map.put("id", index.getId());
-        map.put("title", index.getTitle());
-        map.put("content", index.getContent());
-        map.put("kbId", index.getKbId());
-        map.put("ownerId", index.getOwnerId());
-        map.put("ownerName", index.getOwnerName());
-        map.put("visibility", index.getVisibility());
-        map.put("orgId", index.getOrgId());
-        map.put("fileType", index.getFileType());
-        map.put("createTime", index.getCreateTime() != null ? index.getCreateTime().toString() : null);
-        map.put("updateTime", index.getUpdateTime() != null ? index.getUpdateTime().toString() : null);
-        map.put("chunkCount", index.getChunkCount());
-        return map;
     }
 }

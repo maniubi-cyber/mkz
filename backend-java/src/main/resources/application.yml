@@ -101,14 +101,9 @@ spring:
       max-connect-per-route: 10
       max-connect-total: 30
 
-# ==================== Qdrant Configuration (向量数据库 - 父切块存储) ====================
-qdrant:
-  host: ${QDRANT_HOST:localhost}
-  port: ${QDRANT_PORT:6333}
-  username: ${QDRANT_USER:}
-  password: ${QDRANT_PASSWORD:}
-  collection-prefix: ${QDRANT_COLLECTION_PREFIX:kb_}
-  vector-dim: ${QDRANT_VECTOR_DIM:1024}
+# ==================== Chroma Configuration (向量数据库 - 父切块存储) ====================
+# Chroma 是嵌入式向量数据库，由 Python AI Service 内部管理，
+# Java 侧无需直接连接，仅保留配置说明。
 
   # File Upload Configuration
   servlet:

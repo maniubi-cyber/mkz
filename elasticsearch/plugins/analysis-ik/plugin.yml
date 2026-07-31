@@ -1,0 +1,8 @@
+plugin.yml
+name: analysis-ik
+version: 8.13.0
+elasticsearch.version: 8.13.0
+description: IK Analyzer for Elasticsearch
+classname: org.elasticsearch.plugin.analysis.ik.AnalysisIkPlugin
+java.version: 17
+decompress: false

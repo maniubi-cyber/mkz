@@ -7,14 +7,15 @@ All settings are typed and validated at startup.
 RAG 智能问答架构:
 - 文档元数据: MySQL
 - 文档内容父子切块:
-  - 父切块 (Parent Chunks): Qdrant 向量数据库
+  - 父切块 (Parent Chunks): Chroma 向量数据库
   - 子切块 (Child Chunks): Redis (精确匹配 + 缓存)
 
-Qdrant 优势:
-- 轻量级部署，单二进制无需 etcd/MinIO 依赖
-- 丰富的 payload 过滤条件
-- 生产环境稳定，支持分布式扩展
-- REST + gRPC 双协议，Python SDK 成熟
+Chroma 优势:
+- 嵌入式向量数据库，无需独立服务部署
+- 支持持久化存储到磁盘
+- 内置 HNSW 索引，搜索效率高
+- REST API + Python SDK 双协议
+- 适合中小规模知识库（万~百万级向量）
 """
 
 from __future__ import annotations
@@ -88,14 +89,14 @@ class Settings(BaseSettings):
         description="是否对 embedding 做 L2 归一化"
     )
 
-    # ---- Qdrant Vector Store (父切块) ----
-    QDRANT_HOST: str = Field(default="localhost", description="Qdrant 服务主机")
-    QDRANT_PORT: int = Field(default=6333, description="Qdrant 服务端口")
-    QDRANT_USER: str = Field(default=None, description="Qdrant 用户名（可选）")
-    QDRANT_PASSWORD: str = Field(default=None, description="Qdrant 密码（可选）")
-    QDRANT_COLLECTION_PREFIX: str = Field(
+    # ---- Chroma Vector Store (父切块) ----
+    CHROMA_COLLECTION_PREFIX: str = Field(
         default="kb_",
-        description="Qdrant Collection 名称前缀（后跟 kb_id）"
+        description="Chroma Collection 名称前缀（后跟 kb_id）"
+    )
+    CHROMA_PERSIST_DIR: str = Field(
+        default="data/chroma",
+        description="Chroma 持久化存储目录（相对于容器工作目录）"
     )
 
     # ---- LLM / Chat ----
@@ -177,9 +178,9 @@ class Settings(BaseSettings):
         return self.MINIO_ENDPOINT.replace("http://", "").replace("https://", "")
 
     @property
-    def qdrant_uri(self) -> str:
-        """Qdrant connection URI."""
-        return f"http://{self.QDRANT_HOST}:{self.QDRANT_PORT}"
+    def chroma_persist_path(self) -> str:
+        """Chroma persistent storage path."""
+        return self.CHROMA_PERSIST_DIR
 
     @property
     def redis_url(self) -> str:

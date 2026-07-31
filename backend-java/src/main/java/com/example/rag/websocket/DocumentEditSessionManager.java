@@ -20,14 +20,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
  *   <li>documentSessions: 文档ID -> 该文档的所有活跃会话集合</li>
  *   <li>sessionDocumentMap: 会话ID -> 文档ID 的反向映射</li>
  *   <li>userColors: 用户ID -> 颜色（用于区分不同用户的光标）</li>
- * </ul>
- *
- * <h3>协作特性:</h3>
- * <ul>
- *   <li>多人同时编辑同一文档</li>
- *   <li>实时同步编辑操作</li>
- *   <li>光标位置实时显示</li>
- *   <li>用户在线状态管理</li>
+ *   <li>documentVersions: 文档ID -> 当前版本号</li>
  * </ul>
  *
  * @author knowledge-rag-team
@@ -36,16 +29,10 @@ import java.util.concurrent.CopyOnWriteArraySet;
 @Component
 public class DocumentEditSessionManager {
 
-    /** 文档ID -> 该文档的所有活跃会话集合 */
     private final Map<Long, Set<SessionInfo>> documentSessions = new ConcurrentHashMap<>();
-
-    /** 会话ID -> 文档ID 的反向映射 */
     private final Map<String, Long> sessionDocumentMap = new ConcurrentHashMap<>();
-
-    /** 文档ID -> 当前文档版本号 */
     private final Map<Long, Integer> documentVersions = new ConcurrentHashMap<>();
 
-    /** 用户颜色池（用于区分不同用户） */
     private static final String[] USER_COLORS = {
             "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4",
             "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F",
@@ -54,14 +41,6 @@ public class DocumentEditSessionManager {
 
     private int colorIndex = 0;
 
-    /**
-     * 添加会话
-     *
-     * @param docId     文档 ID
-     * @param session   WebSocket 会话
-     * @param userId    用户 ID
-     * @param username  用户名
-     */
     public synchronized void addSession(Long docId, WebSocketSession session, Long userId, String username) {
         SessionInfo sessionInfo = SessionInfo.builder()
                 .sessionId(session.getId())
@@ -78,11 +57,6 @@ public class DocumentEditSessionManager {
                 docId, userId, username, getSessionCount(docId));
     }
 
-    /**
-     * 移除会话
-     *
-     * @param sessionId 会话 ID
-     */
     public synchronized void removeSession(String sessionId) {
         Long docId = sessionDocumentMap.remove(sessionId);
         if (docId != null) {
@@ -98,14 +72,6 @@ public class DocumentEditSessionManager {
         }
     }
 
-    /**
-     * 广播消息给文档的所有其他会话
-     *
-     * @param docId         文档 ID
-     * @param message       消息内容
-     * @param excludeSender 是否排除发送者
-     * @param senderId      发送者会话 ID
-     */
     public void broadcastToDocument(Long docId, String message, boolean excludeSender, String senderId) {
         Set<SessionInfo> sessions = documentSessions.get(docId);
         if (sessions == null || sessions.isEmpty()) {
@@ -117,7 +83,6 @@ public class DocumentEditSessionManager {
                 continue;
             }
 
-            // 获取实际的 WebSocketSession 并发送消息
             WebSocketSession webSocketSession = WebSocketSessionRegistry.getSession(sessionInfo.getSessionId());
             if (webSocketSession != null && webSocketSession.isOpen()) {
                 try {
@@ -131,55 +96,34 @@ public class DocumentEditSessionManager {
         }
     }
 
-    /**
-     * 获取文档的在线用户数量
-     */
     public int getSessionCount(Long docId) {
         Set<SessionInfo> sessions = documentSessions.get(docId);
         return sessions != null ? sessions.size() : 0;
     }
 
-    /**
-     * 获取文档的在线用户列表
-     */
     public List<SessionInfo> getOnlineUsers(Long docId) {
         Set<SessionInfo> sessions = documentSessions.get(docId);
         return sessions != null ? new ArrayList<>(sessions) : Collections.emptyList();
     }
 
-    /**
-     * 获取并递增文档版本号
-     */
     public synchronized int incrementAndGetVersion(Long docId) {
         return documentVersions.merge(docId, 1, Integer::sum);
     }
 
-    /**
-     * 获取当前文档版本号
-     */
     public int getVersion(Long docId) {
         return documentVersions.getOrDefault(docId, 0);
     }
 
-    /**
-     * 设置文档版本号
-     */
     public void setVersion(Long docId, int version) {
         documentVersions.put(docId, version);
     }
 
-    /**
-     * 获取下一个用户颜色
-     */
     private synchronized String getNextColor() {
         String color = USER_COLORS[colorIndex % USER_COLORS.length];
         colorIndex++;
         return color;
     }
 
-    /**
-     * 会话信息
-     */
     @Data
     @Builder
     @AllArgsConstructor

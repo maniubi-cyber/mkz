@@ -1,6 +1,6 @@
 # ============================================================
 # 知识库文档协作平台 - Docker Compose 配置
-# 技术栈: Spring Cloud Alibaba + Spring Boot + Elasticsearch + Redis + FastAPI + LangChain + MySQL + Qdrant
+# 技术栈: Spring Cloud Alibaba + Spring Boot + Elasticsearch + Redis + FastAPI + LangChain + MySQL + Chroma
 # ============================================================
 #
 # 启动所有服务:
@@ -12,7 +12,7 @@
 #   - minio: 文件对象存储
 #   - elasticsearch: 全文检索 (IK中文分词)
 #   - kibana: ES 可视化管理
-#   - qdrant: 向量数据库 (父切块存储)
+#   - chroma: 向量数据库（嵌入式，Python AI Service 内部管理）
 #   - nacos: 服务注册发现 + 配置中心
 #   - sentinel: 熔断限流控制台
 #   - ai-service: Python FastAPI 服务 (LangChain RAG)
@@ -137,18 +137,9 @@ services:
     networks:
       - rag-network
 
-  # ==================== Qdrant (向量数据库 - 父切块存储) ====================
-  qdrant:
-    image: qdrant/qdrant:v1.7.0
-    container_name: rag-qdrant
-    restart: unless-stopped
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_data:/qdrant_data
-    networks:
-      - rag-network
+  # ==================== Chroma 向量数据库（嵌入式，Python 服务内部管理） ====================
+  # Chroma 是嵌入式向量数据库，无需独立容器。
+  # 持久化目录通过 volume ai_service_data 挂载到 Python AI Service。
 
   # ==================== Nacos (服务注册发现 + 配置中心) ====================
   nacos:
@@ -225,9 +216,6 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=
       - REDIS_DATABASE=0
-      # Qdrant
-      - QDRANT_HOST=rag-qdrant
-      - QDRANT_PORT=6333
       # MinIO
       - MINIO_ENDPOINT=rag-minio:9000
       - MINIO_ACCESS_KEY=minioadmin
@@ -246,8 +234,6 @@ services:
       mysql:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      qdrant:
         condition: service_healthy
     networks:
       - rag-network
@@ -280,9 +266,6 @@ services:
       - ES_URIS=http://rag-elasticsearch:9200
       - ES_USERNAME=
       - ES_PASSWORD=
-      # Qdrant
-      - QDRANT_HOST=rag-qdrant
-      - QDRANT_PORT=6333
       # Nacos
       - NACOS_SERVER=rag-nacos:8848
       - NACOS_NAMESPACE=public
@@ -319,7 +302,6 @@ volumes:
   redis_data:
   minio_data:
   es_data:
-  qdrant_data:
   ai_service_data:
 
 networks:

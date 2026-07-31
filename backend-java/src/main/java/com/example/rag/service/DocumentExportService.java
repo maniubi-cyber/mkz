@@ -31,4 +31,14 @@ public interface DocumentExportService {
      * @return 文件名
      */
     String getExportFilename(Document document, String formatType);
+
+    /**
+     * 获取导出文件的 Content-Type
+     *
+     * @param formatType 导出格式（pdf / word / markdown）
+     * @return MIME 类型
+     */
+    static String getContentType(String formatType) {
+        return DocumentExportFactory.getStrategy(formatType).getContentType();
+    }
 }

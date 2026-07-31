@@ -14,6 +14,7 @@ import com.example.rag.entity.KnowledgeBase;
 import com.example.rag.mapper.DocumentChunkMapper;
 import com.example.rag.mapper.DocumentMapper;
 import com.example.rag.mapper.KnowledgeBaseMapper;
+import com.example.rag.service.DocumentExportService;
 import com.example.rag.service.DocumentParseService;
 import com.example.rag.service.DocumentService;
 import com.example.rag.service.MinioService;
@@ -78,6 +79,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final MinioService minioService;
     private final FileUploadValidator fileUploadValidator;
     private final DocumentParseService documentParseService;
+    private final DocumentExportService documentExportService;
     private final StringRedisTemplate redisTemplate;
 
     // ==================== 常量 ====================
@@ -593,5 +595,28 @@ public class DocumentServiceImpl implements DocumentService {
      */
     private DocumentResponse buildResponse(Document doc) {
         return DocumentResponse.from(doc, minioService.getPresignedUrl(doc.getMinioPath()));
+    }
+
+    // ==================== 导出文档 ====================
+
+    @Override
+    public java.io.ByteArrayOutputStream exportDocument(Long docId, String formatType) throws Exception {
+        Document doc = documentMapper.selectById(docId);
+        if (doc == null) {
+            throw new BusinessException(404, "文档不存在");
+        }
+        checkDocViewPermission(doc);
+        return documentExportService.exportDocument(doc, formatType);
+    }
+
+    @Override
+    public String getExportFilename(DocumentResponse doc, String formatType) {
+        return documentExportService.getExportFilename(
+                documentMapper.selectById(doc.getId()), formatType);
+    }
+
+    @Override
+    public String getExportContentType(String formatType) {
+        return DocumentExportService.getContentType(formatType);
     }
 }
