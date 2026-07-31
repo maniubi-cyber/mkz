@@ -141,7 +141,7 @@ public class DocumentParseService {
      *   <li>文本提取（PDF/DOCX/XLSX/TXT/MD）</li>
      *   <li>文本切片（按段落/句子 + 重叠窗口）</li>
      *   <li>向量化（调用 Embedding 模型）</li>
-     *   <li>写入向量库（Milvus）</li>
+     *   <li>写入向量库（Qdrant）</li>
      *   <li>写入 document_chunk 表（MySQL）</li>
      *   <li>回写 chunk_count 到 document 表</li>
      * </ol>

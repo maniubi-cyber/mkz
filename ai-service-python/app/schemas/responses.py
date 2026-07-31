@@ -58,7 +58,7 @@ class ParseResult(BaseModel):
     chunk_count: int = Field(
         default=0,
         ge=0,
-        description="生成的切片数量（含解析→切分→向量化→写入 Milvus 全流程）",
+        description="生成的切片数量（含解析→切分→向量化→写入 Qdrant 全流程）",
         examples=[25],
     )
     message: str = Field(

@@ -14,7 +14,7 @@ import java.util.Map;
  *
  * <h3>Python 服务 API</h3>
  * <ul>
- *   <li>POST /api/parse — 文档解析（文本提取 → 切片 → 向量化 → 写入 Milvus）</li>
+ *   <li>POST /api/parse — 文档解析（文本提取 → 切片 → 向量化 → 写入 Qdrant）</li>
  *   <li>POST /api/vectors/delete — 删除文档向量</li>
  * </ul>
  *
@@ -36,7 +36,7 @@ public interface AiServiceClient {
      *   <li>文本提取（PDF/DOCX/XLSX/TXT/MD）</li>
      *   <li>文本切片（按段落/句子 + 重叠窗口）</li>
      *   <li>向量化（调用 Embedding 模型）</li>
-     *   <li>写入向量库（Milvus）</li>
+     *   <li>写入向量库（Qdrant）</li>
      *   <li>写入 document_chunk 表（MySQL）</li>
      * </ol>
      *

@@ -6,7 +6,7 @@ embedding with L2 normalization.
 
 After normalization:
     cosine_similarity(a, b) = dot(a, b)
-This is Milvus's expected format for inner product (IP) similarity search.
+This is Qdrant's expected format for COSINE similarity search.
 """
 
 from __future__ import annotations

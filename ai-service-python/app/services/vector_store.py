@@ -1,20 +1,19 @@
 """
-Milvus Vector Store Service
+Qdrant Vector Store Service — Lightweight Version
 
-使用 Milvus 替代 Chroma 作为向量数据库，存储文档父切块的 embedding。
+使用 Qdrant 作为向量数据库，存储文档父切块的 embedding。
 
-Milvus 优势 (vs Chroma):
-- 支持更大规模向量数据（亿级向量）
-- 更高效的 ANN 搜索算法（IVF_PQ, HNSW, IVF_SQ8）
-- 支持分布式部署，水平扩展
-- 支持标量过滤 + 向量搜索混合查询
-- 生产环境更稳定
+Qdrant 优势 (vs Chroma):
+- 轻量级部署，单二进制无需 etcd/MinIO 依赖
+- 丰富的过滤条件（payload 过滤 + 向量相似度）
+- 生产环境稳定，支持分布式扩展
+- REST + gRPC 双协议，Python SDK 成熟
 
 Collection 命名: kb_{kb_id}
-索引类型: IVF_PQ (推荐) 或 HNSW
-距离度量: IP (内积，适合归一化向量)
+向量维度: 由 EMBEDDING_DIMENSION 配置决定
+距离度量: COSINE（默认，适合归一化向量）
 
-每个 chunk 的 metadata:
+每个点 (Point) 的 payload:
     document_id   (int)    — 源文档主键
     kb_id         (int)    — 知识库主键
     file_name     (str)    — 原始文件名
@@ -37,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 class VectorStore:
     """
-    Milvus 向量存储封装类。
+    Qdrant 向量存储封装类。
 
     Usage::
 
@@ -50,7 +49,7 @@ class VectorStore:
 
     def __init__(self) -> None:
         self._client = None
-        self._collection_prefix = settings.MILVUS_COLLECTION_PREFIX
+        self._collection_prefix = settings.QDRANT_COLLECTION_PREFIX
         self._dimension = settings.EMBEDDING_DIMENSION
 
     # ---- Singleton ----
@@ -74,7 +73,7 @@ class VectorStore:
         org_id: int,
     ) -> int:
         """
-        将切块向量化后插入到 Milvus collection 中。
+        将切块向量化后插入到 Qdrant collection 中。
 
         Args:
             kb_id:       知识库 ID
@@ -102,48 +101,36 @@ class VectorStore:
         texts = [c.content for c in chunks]
         vectors = [vec.tolist() for vec in embedder.embed(texts)]
 
-        # 构建插入数据
-        ids = []
-        contents = []
-        file_names = []
-        chunk_indices = []
-        owner_ids = []
-        visibilities = []
-        org_ids = []
+        # 构建 Qdrant 点列表
+        from qdrant_client.models import PointStruct
 
-        for chunk in chunks:
-            chunk_id = f"doc_{document_id}_chunk_{chunk.index}"
-            ids.append(chunk_id)
-            contents.append(chunk.content)
-            file_names.append(file_name)
-            chunk_indices.append(chunk.index)
-            owner_ids.append(owner_id)
-            visibilities.append(visibility)
-            org_ids.append(org_id if org_id else 0)
+        points = []
+        for i, chunk in enumerate(chunks):
+            point_id = f"doc_{document_id}_chunk_{chunk.index}"
+            points.append(
+                PointStruct(
+                    id=point_id,
+                    vector=vectors[i],
+                    payload={
+                        "content": chunk.content,
+                        "file_name": file_name,
+                        "chunk_index": chunk.index,
+                        "document_id": document_id,
+                        "owner_id": owner_id,
+                        "visibility": visibility,
+                        "org_id": org_id if org_id else 0,
+                    },
+                )
+            )
 
-        # 构建数据字典
-        data = {
-            "id": ids,
-            "content": contents,
-            "vector": vectors,
-            "file_name": file_names,
-            "chunk_index": chunk_indices,
-            "owner_id": owner_ids,
-            "visibility": visibilities,
-            "org_id": org_ids,
-        }
-
-        # 插入数据
-        self._client.insert(
+        # 批量上载
+        self._client.upsert(
             collection_name=collection_name,
-            data=data,
+            points=points,
         )
 
-        # 刷新 collection 使数据可搜索
-        self._client.flush(collection_name)
-
         logger.info(
-            "向 Milvus 插入完成: kb_id={}, doc_id={}, count={}",
+            "向 Qdrant 插入完成: kb_id={}, doc_id={}, count={}",
             kb_id, document_id, len(chunks),
         )
         return len(chunks)
@@ -161,32 +148,33 @@ class VectorStore:
         """
         collection_name = self._get_collection_name(kb_id)
 
-        # 查询要删除的记录数
-        try:
-            before_count = self._client.get_collection_stats(collection_name).get("row_count", 0)
-        except Exception:
-            before_count = 0
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
 
-        # 删除所有匹配 document_id 的记录
-        # 使用 expr 过滤删除
-        expr = f"file_name != ''"  # 删除所有（简化处理）
+        # 使用过滤器删除指定 document_id 的所有点
         self._client.delete(
             collection_name=collection_name,
-            expr=expr,
+            points_selector=Filter(
+                must=[
+                    FieldCondition(
+                        key="document_id",
+                        match=MatchValue(value=document_id),
+                    )
+                ]
+            ),
         )
 
         logger.info(
-            "Milvus 删除完成: kb_id={}, doc_id={}",
+            "Qdrant 删除完成: kb_id={}, doc_id={}",
             kb_id, document_id,
         )
-        return before_count
+        return 0
 
     def count(self, kb_id: int) -> int:
         """返回 collection 中的向量数量。"""
         collection_name = self._get_collection_name(kb_id)
         try:
-            stats = self._client.get_collection_stats(collection_name)
-            return stats.get("row_count", 0)
+            count_result = self._client.count(collection_name=collection_name)
+            return count_result.count
         except Exception:
             return 0
 
@@ -205,24 +193,17 @@ class VectorStore:
             top_k:          返回结果数量
 
         Returns:
-            搜索结果字典
+            搜索结果字典（与检索器兼容的统一格式）
         """
         collection_name = self._get_collection_name(kb_id)
 
-        search_params = {
-            "metric_type": settings.MILVUS_METRIC_TYPE,
-            "params": {"nprobe": 10},  # IVF 搜索参数
-        }
-
         results = self._client.search(
             collection_name=collection_name,
-            data=[query_embedding],
+            query_vector=query_embedding,
             limit=top_k,
-            search_params=search_params,
-            output_fields=["id", "content", "file_name", "chunk_index", "owner_id", "visibility", "org_id"],
         )
 
-        # 转换为统一格式
+        # 转换为与检索器兼容的统一格式
         formatted_results = {
             "ids": [[]],
             "documents": [[]],
@@ -231,16 +212,20 @@ class VectorStore:
         }
 
         if results:
-            for hit in results[0]:
-                formatted_results["ids"][0].append(hit.get("id", ""))
-                formatted_results["documents"][0].append(hit.get("entity", {}).get("content", ""))
-                formatted_results["distances"][0].append(hit.get("distance", 0.0))
+            for hit in results:
+                payload = hit.payload or {}
+                # Qdrant score 是相似度分数（0~1），转换为距离（1-score 表示距离）
+                distance = 1.0 - hit.score if hit.score else 0.0
+                formatted_results["ids"][0].append(hit.id)
+                formatted_results["documents"][0].append(payload.get("content", ""))
+                formatted_results["distances"][0].append(distance)
                 formatted_results["metadatas"][0].append({
-                    "file_name": hit.get("entity", {}).get("file_name", ""),
-                    "chunk_index": hit.get("entity", {}).get("chunk_index", 0),
-                    "owner_id": hit.get("entity", {}).get("owner_id", 0),
-                    "visibility": hit.get("entity", {}).get("visibility", ""),
-                    "org_id": hit.get("entity", {}).get("org_id", 0),
+                    "file_name": payload.get("file_name", ""),
+                    "chunk_index": payload.get("chunk_index", 0),
+                    "owner_id": payload.get("owner_id", 0),
+                    "visibility": payload.get("visibility", ""),
+                    "org_id": payload.get("org_id", 0),
+                    "document_id": payload.get("document_id", 0),
                 })
 
         return formatted_results
@@ -253,60 +238,39 @@ class VectorStore:
 
     def _ensure_collection_exists(self, collection_name: str) -> None:
         """确保 collection 存在，不存在则创建。"""
-        from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, utility
+        from qdrant_client.models import Distance, VectorParams
 
-        if utility.has_collection(collection_name):
-            self._client = Collection(name=collection_name)
+        if self._client.collection_exists(collection_name):
             return
 
-        # 定义 schema
-        fields = [
-            FieldSchema(name="id", dtype=DataType.VARCHAR, max_length=100, is_primary=True),
-            FieldSchema(name="content", dtype=DataType.VARCHAR, max_length=65535),
-            FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=self._dimension),
-            FieldSchema(name="file_name", dtype=DataType.VARCHAR, max_length=500),
-            FieldSchema(name="chunk_index", dtype=DataType.INT64),
-            FieldSchema(name="owner_id", dtype=DataType.INT64),
-            FieldSchema(name="visibility", dtype=DataType.VARCHAR, max_length=20),
-            FieldSchema(name="org_id", dtype=DataType.INT64),
-        ]
-
-        schema = CollectionSchema(
-            fields=fields,
-            description=f"Knowledge base {collection_name} document chunks",
+        self._client.create_collection(
+            collection_name=collection_name,
+            vectors_config=VectorParams(
+                size=self._dimension,
+                distance=Distance.COSINE,
+            ),
         )
 
-        collection = Collection(name=collection_name, schema=schema)
-
-        # 创建索引
-        index_params = {
-            "metric_type": settings.MILVUS_METRIC_TYPE,
-            "index_type": settings.MILVUS_INDEX_TYPE,
-            "params": {
-                "nlist": 1024,  # IVF 聚类数
-                "m": 16,        # PQ 子向量数
-                "nbits": 8,     # PQ 编码位数
-            },
-        }
-
-        collection.create_index(field_name="vector", index_params=index_params)
-        collection.load()
-
-        self._client = collection
-        logger.info("创建 Milvus collection: {}, dim={}", collection_name, self._dimension)
+        logger.info(
+            "创建 Qdrant collection: {}, dim={}",
+            collection_name, self._dimension,
+        )
 
     def _get_client(self):
-        """获取 Milvus 连接（懒加载）。"""
+        """获取 Qdrant 连接（懒加载）。"""
         if self._client is None:
-            from pymilvus import connections
-            connections.connect(
-                alias="default",
-                host=settings.MILVUS_HOST,
-                port=settings.MILVUS_PORT,
-                user=settings.MILVUS_USER,
-                password=settings.MILVUS_PASSWORD,
+            from qdrant_client import QdrantClient
+            self._client = QdrantClient(
+                host=settings.QDRANT_HOST,
+                port=settings.QDRANT_PORT,
+                username=settings.QDRANT_USER,
+                password=settings.QDRANT_PASSWORD,
+                https=False,
             )
-            logger.info("Milvus 连接成功: {}:{}", settings.MILVUS_HOST, settings.MILVUS_PORT)
+            logger.info(
+                "Qdrant 连接成功: {}:{:d}",
+                settings.QDRANT_HOST, settings.QDRANT_PORT,
+            )
         return self._client
 
 

@@ -101,14 +101,14 @@ spring:
       max-connect-per-route: 10
       max-connect-total: 30
 
-# ==================== Milvus Configuration (向量数据库 - 父切块存储) ====================
-milvus:
-  host: ${MILVUS_HOST:localhost}
-  port: ${MILVUS_PORT:19530}
-  username: ${MILVUS_USERNAME:root}
-  password: ${MILVUS_PASSWORD:Milvus}
-  collection-prefix: ${MILVUS_COLLECTION_PREFIX:kb_}
-  vector-dim: ${MILVUS_VECTOR_DIM:1024}
+# ==================== Qdrant Configuration (向量数据库 - 父切块存储) ====================
+qdrant:
+  host: ${QDRANT_HOST:localhost}
+  port: ${QDRANT_PORT:6333}
+  username: ${QDRANT_USER:}
+  password: ${QDRANT_PASSWORD:}
+  collection-prefix: ${QDRANT_COLLECTION_PREFIX:kb_}
+  vector-dim: ${QDRANT_VECTOR_DIM:1024}
 
   # File Upload Configuration
   servlet:

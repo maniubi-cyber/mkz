@@ -7,14 +7,14 @@ All settings are typed and validated at startup.
 RAG 智能问答架构:
 - 文档元数据: MySQL
 - 文档内容父子切块:
-  - 父切块 (Parent Chunks): Milvus 向量数据库 (替换 Chroma)
+  - 父切块 (Parent Chunks): Qdrant 向量数据库
   - 子切块 (Child Chunks): Redis (精确匹配 + 缓存)
 
-Milvus 优势 (vs Chroma):
-- 支持更大规模向量数据（亿级）
-- 更高效的 ANN 搜索算法（IVF_PQ, HNSW）
-- 支持分布式部署
-- 支持标量过滤 + 向量搜索混合查询
+Qdrant 优势:
+- 轻量级部署，单二进制无需 etcd/MinIO 依赖
+- 丰富的 payload 过滤条件
+- 生产环境稳定，支持分布式扩展
+- REST + gRPC 双协议，Python SDK 成熟
 """
 
 from __future__ import annotations
@@ -88,22 +88,14 @@ class Settings(BaseSettings):
         description="是否对 embedding 做 L2 归一化"
     )
 
-    # ---- Milvus Vector Store (父切块) ----
-    MILVUS_HOST: str = Field(default="localhost", description="Milvus 服务主机")
-    MILVUS_PORT: int = Field(default=19530, description="Milvus 服务端口")
-    MILVUS_USER: str = Field(default="root", description="Milvus 用户名")
-    MILVUS_PASSWORD: str = Field(default="Milvus", description="Milvus 密码")
-    MILVUS_COLLECTION_PREFIX: str = Field(
+    # ---- Qdrant Vector Store (父切块) ----
+    QDRANT_HOST: str = Field(default="localhost", description="Qdrant 服务主机")
+    QDRANT_PORT: int = Field(default=6333, description="Qdrant 服务端口")
+    QDRANT_USER: str = Field(default=None, description="Qdrant 用户名（可选）")
+    QDRANT_PASSWORD: str = Field(default=None, description="Qdrant 密码（可选）")
+    QDRANT_COLLECTION_PREFIX: str = Field(
         default="kb_",
-        description="Milvus Collection 名称前缀（后跟 kb_id）"
-    )
-    MILVUS_INDEX_TYPE: str = Field(
-        default="IVF_PQ",
-        description="索引类型: IVF_PQ / HNSW / IVF_SQ8 / FLAT"
-    )
-    MILVUS_METRIC_TYPE: str = Field(
-        default="IP",
-        description="距离度量: IP(内积) / L2(欧氏距离) / COSINE(余弦)"
+        description="Qdrant Collection 名称前缀（后跟 kb_id）"
     )
 
     # ---- LLM / Chat ----
@@ -185,9 +177,9 @@ class Settings(BaseSettings):
         return self.MINIO_ENDPOINT.replace("http://", "").replace("https://", "")
 
     @property
-    def milvus_uri(self) -> str:
-        """Milvus connection URI."""
-        return f"http://{self.MILVUS_HOST}:{self.MILVUS_PORT}"
+    def qdrant_uri(self) -> str:
+        """Qdrant connection URI."""
+        return f"http://{self.QDRANT_HOST}:{self.QDRANT_PORT}"
 
     @property
     def redis_url(self) -> str:

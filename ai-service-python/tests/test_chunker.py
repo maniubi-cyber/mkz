@@ -44,10 +44,10 @@ def markdown_doc() -> str:
         "用户可以通过Web界面或API接口使用这些功能。\n\n"
         "## 1.2 技术架构\n\n"
         "后端采用Spring Boot框架，AI服务使用Python FastAPI。"
-        "向量数据库使用Milvus，对象存储使用MinIO。\n\n"
+        "向量数据库使用Qdrant，对象存储使用MinIO。\n\n"
         "# 第二章：部署方案\n\n"
         "系统支持Docker Compose一键部署。"
-        "包括MySQL、Redis、MinIO、Milvus等所有依赖服务。"
+        "包括MySQL、Redis、MinIO、Qdrant等所有依赖服务。"
     )
 
 
@@ -62,7 +62,7 @@ def long_paragraph() -> str:
         "在技术架构方面，系统采用微服务设计理念，将业务逻辑与AI能力分离。"
         "Java后端负责知识库管理、用户认证、文档上传等业务功能，"
         "而Python AI服务则专注于文档解析、文本向量化、语义检索和智能问答。"
-        "向量数据库选用Milvus，它提供了高效的向量存储和相似度搜索能力。"
+        "向量数据库选用Qdrant，它提供了高效的向量存储和相似度搜索能力。"
         "对象存储使用MinIO，兼容S3协议，适合存储各类文档文件。"
         "系统还集成了Redis作为缓存层，提升高频查询的响应速度。"
         "在部署方面，系统提供Docker Compose编排文件，支持一键启动所有服务。"

@@ -1,6 +1,6 @@
 # ============================================================
 # 知识库文档协作平台 - Docker Compose 配置
-# 技术栈: Spring Cloud Alibaba + Spring Boot + Elasticsearch + Redis + FastAPI + LangChain + MySQL + Milvus
+# 技术栈: Spring Cloud Alibaba + Spring Boot + Elasticsearch + Redis + FastAPI + LangChain + MySQL + Qdrant
 # ============================================================
 #
 # 启动所有服务:
@@ -12,12 +12,9 @@
 #   - minio: 文件对象存储
 #   - elasticsearch: 全文检索 (IK中文分词)
 #   - kibana: ES 可视化管理
-#   - milvus: 向量数据库 (父切块存储，替换Chroma)
-#   - etcd: Milvus元数据存储
-#   - minio-milvus: Milvus对象存储
+#   - qdrant: 向量数据库 (父切块存储)
 #   - nacos: 服务注册发现 + 配置中心
 #   - sentinel: 熔断限流控制台
-#   - attu: Milvus可视化管理
 #   - ai-service: Python FastAPI 服务 (LangChain RAG)
 #   - backend-java: Spring Boot Java 服务
 
@@ -140,84 +137,16 @@ services:
     networks:
       - rag-network
 
-  # ==================== Milvus (向量数据库 - 父切块存储) ====================
-  etcd:
-    image: quay.io/coreos/etcd:v3.5.5
-    container_name: rag-milvus-etcd
-    restart: unless-stopped
-    environment:
-      - ETCD_AUTO_COMPACTION_MODE=revision
-      - ETCD_AUTO_COMPACTION_RETENTION=1000
-      - ETCD_QUOTA_BACKEND_BYTES=4294967296
-      - ETCD_SNAPSHOT_COUNT=50000
-    volumes:
-      - etcd_data:/etcd
-    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
-    healthcheck:
-      test: ["CMD", "etcdctl", "endpoint", "health"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-    networks:
-      - rag-network
-
-  minio-milvus:
-    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
-    container_name: rag-milvus-minio
-    restart: unless-stopped
-    environment:
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
-    volumes:
-      - minio_milvus_data:/minio_data
-    command: minio server /minio_data --console-address ":9001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-    networks:
-      - rag-network
-
-  milvus:
-    image: milvusdb/milvus:v2.4.0
-    container_name: rag-milvus
+  # ==================== Qdrant (向量数据库 - 父切块存储) ====================
+  qdrant:
+    image: qdrant/qdrant:v1.7.0
+    container_name: rag-qdrant
     restart: unless-stopped
     ports:
-      - "19530:19530"
-      - "9091:9091"
-    command: ["milvus", "run", "standalone"]
-    environment:
-      ETCD_ENDPOINTS: rag-milvus-etcd:2379
-      MINIO_ADDRESS: rag-milvus-minio:9000
+      - "6333:6333"
+      - "6334:6334"
     volumes:
-      - milvus_data:/var/lib/milvus
-    depends_on:
-      etcd:
-        condition: service_healthy
-      minio-milvus:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
-      interval: 30s
-      timeout: 20s
-      retries: 5
-      start_period: 60s
-    networks:
-      - rag-network
-
-  # ==================== Attu (Milvus可视化管理) ====================
-  attu:
-    image: zilliz/attu:v2.4.0
-    container_name: rag-attu
-    restart: unless-stopped
-    ports:
-      - "8001:3000"
-    environment:
-      MILVUS_URL: rag-milvus:19530
-    depends_on:
-      milvus:
-        condition: service_healthy
+      - qdrant_data:/qdrant_data
     networks:
       - rag-network
 
@@ -296,9 +225,9 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=
       - REDIS_DATABASE=0
-      # Milvus
-      - MILVUS_HOST=rag-milvus
-      - MILVUS_PORT=19530
+      # Qdrant
+      - QDRANT_HOST=rag-qdrant
+      - QDRANT_PORT=6333
       # MinIO
       - MINIO_ENDPOINT=rag-minio:9000
       - MINIO_ACCESS_KEY=minioadmin
@@ -318,7 +247,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      milvus:
+      qdrant:
         condition: service_healthy
     networks:
       - rag-network
@@ -351,11 +280,9 @@ services:
       - ES_URIS=http://rag-elasticsearch:9200
       - ES_USERNAME=
       - ES_PASSWORD=
-      # Milvus
-      - MILVUS_HOST=rag-milvus
-      - MILVUS_PORT=19530
-      - MILVUS_USERNAME=root
-      - MILVUS_PASSWORD=Milvus
+      # Qdrant
+      - QDRANT_HOST=rag-qdrant
+      - QDRANT_PORT=6333
       # Nacos
       - NACOS_SERVER=rag-nacos:8848
       - NACOS_NAMESPACE=public
@@ -392,11 +319,8 @@ volumes:
   redis_data:
   minio_data:
   es_data:
-  etcd_data:
-  minio_milvus_data:
-  milvus_data:
+  qdrant_data:
   ai_service_data:
-  # chroma_data 已移除，使用 Milvus 替代
 
 networks:
   rag-network:
