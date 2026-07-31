@@ -1,4 +1,4 @@
-﻿"""
+"""
 API Route Definitions
 
 REST endpoints for the AI service.
@@ -573,16 +573,23 @@ async def chat_stream(request: ChatRequest):
 
             accumulated = []
             token_usage: dict[str, int] = {}
+            generator = None
 
             try:
-                for chunk in llm.chat_stream(
+                generator = llm.chat_stream(
                     messages=messages,
                     temperature=request.temperature,
-                ):
+                )
+                for chunk in generator:
                     accumulated.append(chunk)
                     yield _json_sse("content", chunk)
 
-                # Extract token usage from generator close
+                # 通过 generator.close() 捕获 token usage
+                try:
+                    token_usage = generator.close()
+                except (StopIteration, AttributeError):
+                    token_usage = {}
+
                 yield _json_sse("done", {
                     "token_usage": token_usage,
                     "search_time_ms": round(t_search_ms, 2),

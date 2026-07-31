@@ -1,4 +1,4 @@
-﻿"""
+"""
 LangChain RAG Service - 基于 LangChain 的检索增强生成服务
 
 核心设计:
@@ -451,7 +451,7 @@ class LangChainRAGService:
         query_embedding = self.embedder.embed([query])[0].tolist()
 
         # 2. 从 Chroma 检索相关父切块
-        Chroma_results = self.vector_store.query(
+        chroma_results = self.vector_store.query(
             kb_id=kb_id,
             query_embedding=query_embedding,
             top_k=top_k * 2,
@@ -459,11 +459,11 @@ class LangChainRAGService:
 
         results = []
 
-        if Chroma_results and Chroma_results.get("ids"):
-            ids = Chroma_results["ids"][0]
-            documents = Chroma_results.get("documents", [[]])[0]
-            distances = Chroma_results.get("distances", [[]])[0]
-            metadatas = Chroma_results.get("metadatas", [[]])[0]
+        if chroma_results and chroma_results.get("ids"):
+            ids = chroma_results["ids"][0]
+            documents = chroma_results.get("documents", [[]])[0]
+            distances = chroma_results.get("distances", [[]])[0]
+            metadatas = chroma_results.get("metadatas", [[]])[0]
 
             for i, chunk_id in enumerate(ids):
                 # Chroma score 已在 vector_store 中转换为距离格式

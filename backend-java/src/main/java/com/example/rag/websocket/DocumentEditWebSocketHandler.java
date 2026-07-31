@@ -10,7 +10,9 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -57,7 +59,7 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
      * 文档ID -> 操作历史队列（用于OT transform）
      * key: docId, value: 按版本号排序的操作列表
      */
-    private final Map<Long, java.util.List<OTOperationRecord>> documentOperationHistory =
+    private final Map<Long, List<OTOperationRecord>> documentOperationHistory =
             new ConcurrentHashMap<>();
 
     /**
@@ -222,7 +224,7 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
         // 如果客户端版本落后于服务器版本，需要进行 OT transform
         if (clientVersion < serverVersion) {
             // 获取从 clientVersion 到 serverVersion 之间的所有操作
-            java.util.List<OTOperationRecord> history = getOperationHistory(docId);
+            List<OTOperationRecord> history = getOperationHistory(docId);
 
             // 依次与历史操作进行 transform
             OTEngine.Operation transformedOp = op;
@@ -323,7 +325,7 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
      * 获取文档的操作历史
      */
     private java.util.List<OTOperationRecord> getOperationHistory(Long docId) {
-        return documentOperationHistory.getOrDefault(docId, java.util.Collections.emptyList());
+        List<OTOperationRecord> history = documentOperationHistory.getOrDefault(docId, Collections.emptyList());
     }
 
     /**

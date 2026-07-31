@@ -1,4 +1,4 @@
-﻿"""
+"""
 LLM Client Service
 
 OpenAI-compatible client configured for DeepSeek (default).

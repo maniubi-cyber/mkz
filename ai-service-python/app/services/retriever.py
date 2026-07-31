@@ -1,4 +1,4 @@
-﻿"""
+"""
 Hybrid Retriever
 
 Combines vector semantic search (Chroma) with keyword search (BM25)
@@ -169,7 +169,7 @@ class HybridRetriever:
         """
         try:
             q_vec = self._embedder.embed_query(query)
-            Chroma_result = self._vector_store.query(
+            chroma_result = self._vector_store.query(
                 kb_id=kb_id,
                 query_embedding=q_vec.tolist(),
                 top_k=top_k,
@@ -179,10 +179,10 @@ class HybridRetriever:
             return []
 
         # Chroma returns nested lists (one per query)
-        ids = Chroma_result.get("ids", [[]])[0]
-        documents = Chroma_result.get("documents", [[]])[0]
-        metadatas = Chroma_result.get("metadatas", [[]])[0]
-        distances = Chroma_result.get("distances", [[]])[0]
+        ids = chroma_result.get("ids", [[]])[0]
+        documents = chroma_result.get("documents", [[]])[0]
+        metadatas = chroma_result.get("metadatas", [[]])[0]
+        distances = chroma_result.get("distances", [[]])[0]
 
         results: list[dict[str, Any]] = []
         for i in range(len(ids)):

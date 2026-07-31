@@ -1,4 +1,4 @@
-﻿"""
+"""
 Enterprise Knowledge Base RAG Q&A System — AI Service (FastAPI)
 
 Entry point for the Python AI microservice.
@@ -61,8 +61,8 @@ async def lifespan(app: FastAPI):
                 settings.EMBEDDING_DEVICE)
     logger.info("[AI Service] LLM         : %s @ %s",
                 settings.LLM_MODEL_NAME, settings.LLM_PROVIDER)
-    logger.info("[AI Service] Chroma      : %s:%d",
-                settings.Chroma_HOST, settings.Chroma_PORT)
+    logger.info("[AI Service] Chroma      : persistent dir=%s",
+                settings.CHROMA_PERSIST_DIR)
     logger.info("[AI Service] MinIO       : %s (bucket=%s)",
                 settings.MINIO_ENDPOINT, settings.MINIO_BUCKET)
     logger.info("=" * 60)
