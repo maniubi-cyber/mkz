@@ -1,4 +1,4 @@
-﻿"""
+"""
 AI Service Application Package
 
 Enterprise Knowledge Base RAG Q&A System

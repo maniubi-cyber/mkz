@@ -1,4 +1,4 @@
-﻿"""
+"""
 Pydantic Response Schemas
 
 Defines the shape of API responses for:

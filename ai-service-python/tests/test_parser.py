@@ -1,4 +1,4 @@
-﻿"""
+"""
 Tests for DocumentParser
 
 Covers all supported formats: PDF, DOCX, XLSX, TXT, MD.

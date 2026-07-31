@@ -1,4 +1,4 @@
-﻿"""
+"""
 Tests for TextChunker
 
 Covers structural splitting, size-based splitting, overlap,

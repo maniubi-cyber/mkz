@@ -1,4 +1,4 @@
-﻿"""
+"""
 Tests for HybridRetriever — RRF fusion + permission filtering.
 
 These tests verify the algorithm logic without requiring actual

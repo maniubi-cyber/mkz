@@ -1,4 +1,4 @@
-﻿"""
+"""
 Embedding Service
 
 Loads a sentence-transformers model and provides batch / single-query
