@@ -253,7 +253,10 @@ public class OrderDetailServiceImpl extends ServiceImpl<OrderDetailMapper, Order
         for (OrderDetail detail : details) {
             detail.setStatus(PAYED.getValue());
             detail.setPayChannel(payChannel);
-            detail.setCourseExpireTime(successTime.plusMinutes(detail.getValidDuration()));
+            Integer validDuration = detail.getValidDuration();
+            if (successTime != null && validDuration != null && validDuration > 0) {
+                detail.setCourseExpireTime(successTime.plusMonths(validDuration));
+            }
         }
         updateBatchById(details);
     }

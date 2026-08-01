@@ -23,17 +23,17 @@ public class PointsMallItemsServiceImpl extends ServiceImpl<PointsMallItemsMappe
     public PageDTO<PointsMallItems> queryPointsItemsByPage(PointsItemsPageQuery query) {
         LambdaQueryWrapper<PointsMallItems> wrapper = new LambdaQueryWrapper<>();
         if (query.getStatus() != null) {
-            wrapper.eq(PointsMallItems::getStatus,query.getStatus());
+            wrapper.eq(PointsMallItems::getStatus, query.getStatus());
         }
         if (query.getMinPoints() != null) {
-            wrapper.ge(PointsMallItems::getPointsRequired, query.getMinPoints() );
+            wrapper.ge(PointsMallItems::getPointsRequired, query.getMinPoints());
         }
         if (query.getMaxPoints() != null) {
             wrapper.le(PointsMallItems::getPointsRequired, query.getMaxPoints());
         }
-        Page<PointsMallItems> page = lambdaQuery()
-                .orderByDesc(PointsMallItems::getCreateTime)
-                .page(query.toMpPage());
+        // 将构造好的筛选条件真正传入查询（原实现构建了 wrapper 却未使用，导致条件全部失效）
+        wrapper.orderByDesc(PointsMallItems::getCreateTime);
+        Page<PointsMallItems> page = page(query.toMpPage(), wrapper);
         return PageDTO.of(page);
     }
 }

@@ -94,12 +94,20 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
             stateMachineRedisPersister.restore(orderStateMachine, String.valueOf(order.getId()));
             Message message = MessageBuilder.withPayload(changeEvent).setHeader("order", order).build();
             result = orderStateMachine.sendEvent(message);
-            //持久化状态机状态
+            if (!result) {
+                // 状态机未接受事件（当前状态不允许该流转），直接判失败，避免“未真正流转却按成功返回”
+                throw new IllegalStateException("订单状态机未接受流转事件 " + changeEvent + "，订单 " + order.getId());
+            }
+            //持久化状态机状态（仅在流转成功时）
             stateMachineRedisPersister.persist(orderStateMachine, String.valueOf(order.getId()));
         } catch (Exception e) {
-            log.error("订单操作失败:{}", e);
+            log.error("订单状态流转失败，事件:{}，订单:{}", changeEvent, order.getId(), e);
+            throw new RuntimeException("订单流程流转失败, 订单状态异常", e);
         } finally {
-            orderStateMachine.stop();
+            try {
+                orderStateMachine.stop();
+            } catch (Exception ignored) {
+            }
         }
         return result;
     }

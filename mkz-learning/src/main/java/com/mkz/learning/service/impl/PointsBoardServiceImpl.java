@@ -167,15 +167,20 @@ public class PointsBoardServiceImpl extends ServiceImpl<PointsBoardMapper, Point
     private List<PointsBoard> queryHistoryBoard(PointsBoardQuery query) {
         // 1.计算表名
         TableInfoContext.setInfo(POINTS_BOARD_TABLE_PREFIX + query.getSeason());
-        // 2.查询数据
-        Page<PointsBoard> page = page(query.toMpPage());
-        // 3.数据处理
-        List<PointsBoard> records = page.getRecords();
-        if (CollUtils.isEmpty(records)) {
-            return CollUtils.emptyList();
+        try {
+            // 2.查询数据
+            Page<PointsBoard> page = page(query.toMpPage());
+            // 3.数据处理
+            List<PointsBoard> records = page.getRecords();
+            if (CollUtils.isEmpty(records)) {
+                return CollUtils.emptyList();
+            }
+            records.forEach(b -> b.setRank(b.getId().intValue()));
+            return records;
+        } finally {
+            // 动态表名 ThreadLocal 必须清除，避免线程复用污染后续查询
+            TableInfoContext.remove();
         }
-        records.forEach(b -> b.setRank(b.getId().intValue()));
-        return records;
     }
 
     //查询历史赛季积分和排名
@@ -184,23 +189,26 @@ public class PointsBoardServiceImpl extends ServiceImpl<PointsBoardMapper, Point
         Long userId = UserContext.getUser();
         // 2.计算表名
         TableInfoContext.setInfo(POINTS_BOARD_TABLE_PREFIX + season);
-        // 3.查询数据
-        Optional<PointsBoard> opt = null;
-
         try {
-            opt = lambdaQuery().eq(PointsBoard::getUserId, userId).oneOpt();
-        } catch (Exception e) {
-            throw new BizIllegalException("当前赛季数据已经丢失，不予显示！");
-        }
+            // 3.查询数据
+            Optional<PointsBoard> opt;
+            try {
+                opt = lambdaQuery().eq(PointsBoard::getUserId, userId).oneOpt();
+            } catch (Exception e) {
+                throw new BizIllegalException("当前赛季数据已经丢失，不予显示！");
+            }
 
-
-        if (opt.isEmpty()) {
-            return null;
+            if (opt.isEmpty()) {
+                return null;
+            }
+            // 4.转换数据
+            PointsBoard pointsBoard = opt.get();
+            pointsBoard.setRank(pointsBoard.getId().intValue());
+            return pointsBoard;
+        } finally {
+            // 动态表名 ThreadLocal 必须清除，避免线程复用污染后续查询
+            TableInfoContext.remove();
         }
-        // 4.转换数据
-        PointsBoard pointsBoard = opt.get();
-        pointsBoard.setRank(pointsBoard.getId().intValue());
-        return pointsBoard;
     }
 
     //查询当前赛季积分和排名

@@ -106,9 +106,9 @@ public class PointsExchangeRecordsServiceImpl extends ServiceImpl<PointsExchange
         if (status != null) {
             wrapper.eq(PointsExchangeRecords::getStatus, status);
         }
-        Page<PointsExchangeRecords> page = lambdaQuery()
-                .orderByDesc(PointsExchangeRecords::getCreateTime)
-                .page(query.toMpPage());
+        // 将构造好的筛选条件真正传入查询（原实现构建了 wrapper 却未使用，导致按商品/状态筛选全部失效）
+        wrapper.orderByDesc(PointsExchangeRecords::getCreateTime);
+        Page<PointsExchangeRecords> page = page(query.toMpPage(), wrapper);
         return PageDTO.of(page);
     }
 

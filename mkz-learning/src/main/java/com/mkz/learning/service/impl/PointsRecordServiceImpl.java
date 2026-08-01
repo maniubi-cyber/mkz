@@ -179,12 +179,26 @@ public class PointsRecordServiceImpl extends ServiceImpl<PointsRecordMapper, Poi
 
     @Override
     public Integer calculatePointsByUserAndMonth(Long userId, String yearMonth, boolean isEarn) {
-        // 从 Redis 中获取指定月份的积分
-        String key = RedisConstants.POINTS_BOARD_KEY_PREFIX + yearMonth;
+        // 按月份、符号从积分流水表(points_record)分别统计“获得”与“消耗”，避免 earned==used
+        YearMonth ym = YearMonth.parse(yearMonth, DateTimeFormatter.ofPattern("yyyyMM"));
+        LocalDateTime start = ym.atDay(1).atStartOfDay();
+        LocalDateTime end = ym.plusMonths(1).atDay(1).atStartOfDay();
 
-        // 获取用户积分
-        Double score = redisTemplate.opsForZSet().score(key, userId.toString());
-        return score != null ? score.intValue() : 0;
+        QueryWrapper<PointsRecord> wrapper = new QueryWrapper<>();
+        wrapper.eq("user_id", userId)
+               .between("create_time", start, end)
+               .select("COALESCE(SUM(points), 0) AS total");
+        if (isEarn) {
+            // 获得：正数积分之和
+            wrapper.gt("points", 0);
+        } else {
+            // 消耗：负数积分之和（以正数 magnitude 返回，语义为“消耗了多少”）
+            wrapper.lt("points", 0);
+        }
+        List<Object> objs = getBaseMapper().selectObjs(wrapper);
+        Object val = CollUtils.isEmpty(objs) ? null : objs.get(0);
+        int sum = val == null ? 0 : ((Number) val).intValue();
+        return isEarn ? sum : Math.abs(sum);
     }
 
 
