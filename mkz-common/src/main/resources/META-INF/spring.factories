@@ -1,0 +1,12 @@
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+ com.mkz.common.autoconfigure.mq.MqConfig,\
+ com.mkz.common.autoconfigure.mvc.JsonConfig,\
+ com.mkz.common.autoconfigure.mvc.MvcConfig,\
+ com.mkz.common.autoconfigure.mvc.ParamCheckerConfig,\
+ com.mkz.common.autoconfigure.mybatis.MybatisConfig,\
+ com.mkz.common.autoconfigure.redisson.RedissonConfig,\
+ com.mkz.common.autoconfigure.swagger.Knife4jConfiguration, \
+ com.mkz.common.autoconfigure.xxljob.XxlJobConfig,\
+ com.mkz.common.autoconfigure.ratelimite.LimiterConfig,\
+ com.mkz.common.autoconfigure.mq.RocketMqConfig,\
+ com.mkz.common.autoconfigure.CommonServiceAutoConfiguration

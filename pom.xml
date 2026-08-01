@@ -8,25 +8,25 @@
     <artifactId>mkz</artifactId>
     <version>1.0.0</version>
     <modules>
-        <module>tj-common</module>
-        <module>tj-auth</module>
-        <module>tj-api</module>
-        <module>tj-gateway</module>
-        <module>tj-user</module>
-        <module>tj-message</module>
-        <module>tj-media</module>
-        <module>tj-course</module>
-        <module>tj-search</module>
-        <module>tj-learning</module>
-        <module>tj-pay</module>
-        <module>tj-trade</module>
-        <module>tj-exam</module>
-        <module>tj-data</module>
-        <module>tj-remark</module>
-        <module>tj-promotion</module>
-        <module>tj-live</module>
-        <module>tj-chat</module>
-        <module>tj-ai-bridge</module>
+        <module>mkz-common</module>
+        <module>mkz-auth</module>
+        <module>mkz-api</module>
+        <module>mkz-gateway</module>
+        <module>mkz-user</module>
+        <module>mkz-message</module>
+        <module>mkz-media</module>
+        <module>mkz-course</module>
+        <module>mkz-search</module>
+        <module>mkz-learning</module>
+        <module>mkz-pay</module>
+        <module>mkz-trade</module>
+        <module>mkz-exam</module>
+        <module>mkz-data</module>
+        <module>mkz-remark</module>
+        <module>mkz-promotion</module>
+        <module>mkz-live</module>
+        <module>mkz-chat</module>
+        <module>mkz-ai-bridge</module>
     </modules>
     <packaging>pom</packaging>
 
@@ -170,7 +170,7 @@
                 <artifactId>rocketmq-spring-boot-starter</artifactId>
                 <version>${rocketmq-starter-version}</version>
             </dependency>
-            <!--mybatis-spring：tj-common 的 AutoConfiguration 使用 @MapperScan 注解所需（与 mybatis-plus 3.4.3 配套的 2.0.6）-->
+            <!--mybatis-spring：mkz-common 的 AutoConfiguration 使用 @MapperScan 注解所需（与 mybatis-plus 3.4.3 配套的 2.0.6）-->
             <dependency>
                 <groupId>org.mybatis</groupId>
                 <artifactId>mybatis-spring</artifactId>

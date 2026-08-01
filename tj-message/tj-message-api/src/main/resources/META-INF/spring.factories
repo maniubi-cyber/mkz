@@ -1,2 +1,0 @@
-﻿org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
-  com.mkz.message.api.config.MessageClientConfiguration

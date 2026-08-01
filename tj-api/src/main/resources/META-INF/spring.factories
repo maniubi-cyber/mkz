@@ -1,5 +1,0 @@
-﻿org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
-  com.mkz.api.config.RequestIdRelayConfiguration, \
-  com.mkz.api.config.RoleCacheConfig, \
-  com.mkz.api.config.FallbackConfig, \
-  com.mkz.api.config.CategoryCacheConfig
