@@ -176,6 +176,9 @@ public interface MqConstants {
 
         /*促销服务有关topic*/
         String PROMOTION_TOPIC = "promotion";
+
+        /*直播服务有关topic*/
+        String LIVE_TOPIC = "live";
     }
 
     interface Tag{
@@ -194,6 +197,10 @@ public interface MqConstants {
         /*订单有关*/
         String ORDER_PAY_TAG = "order.pay";
         String ORDER_REFUND_TAG = "order.refund";
+
+        /*直播有关*/
+        String LIVE_START_TAG = "live.start";
+        String LIVE_STOP_TAG = "live.stop";
 
     }
 
@@ -225,5 +232,10 @@ public interface MqConstants {
          */
         String COUPON_STOCK_REDUCE = "consumer_group_reduce_coupon_stock";
         String COUPON_STOCK_ADD = "consumer_group_add_coupon_stock";
+
+        /**
+         * 直播服务有关消费组
+         */
+        String LIVE_GROUP = "consumer_group_live";
     }
 }

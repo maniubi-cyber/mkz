@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.apache.rocketmq.spring.support.RocketMQHeaders;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.support.MessageBuilder;
 
@@ -66,6 +67,39 @@ public class RocketMqHelper {
             return success;
         } catch (Exception e) {
             log.error("消息发送失败，topic={}, tags={}", topic, tags, e);
+            return false;
+        }
+    }
+
+    /**
+     * 同步发送消息（带标签与业务Key）
+     * <p>
+     * 业务Key会写入RocketMQ消息的KEYS，消费端可作为幂等键（businessId），
+     * 配合本地消息表 + XXL-Job定时扫描补偿机制，保障最终一致性。
+     *
+     * @param topic 主题
+     * @param tags  标签
+     * @param keys  业务Key（消费幂等键）
+     * @param msg   消息内容
+     * @param <T>   消息类型
+     * @return 发送结果
+     */
+    public <T> boolean sendSync(String topic, String tags, String keys, T msg) {
+        try {
+            String destination = tags != null ? topic + ":" + tags : topic;
+            SendResult result = rocketMQTemplate.syncSend(destination, MessageBuilder.withPayload(msg)
+                    .setHeader(RocketMQHeaders.KEYS, keys)
+                    .build());
+            boolean success = SendStatus.SEND_OK.equals(result.getSendStatus());
+            if (success) {
+                log.info("消息发送成功，topic={}, tags={}, keys={}, msgId={}", topic, tags, keys, result.getMsgId());
+            } else {
+                log.warn("消息发送状态非OK，topic={}, tags={}, keys={}, sendStatus={}",
+                        topic, tags, keys, result.getSendStatus());
+            }
+            return success;
+        } catch (Exception e) {
+            log.error("消息发送失败，topic={}, tags={}, keys={}", topic, tags, keys, e);
             return false;
         }
     }
