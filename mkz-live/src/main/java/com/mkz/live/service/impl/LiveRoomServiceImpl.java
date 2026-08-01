@@ -147,6 +147,10 @@ public class LiveRoomServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> i
             update.setPlaybackUrl(playbackUrl);
         }
         this.updateById(update);
+        // 回填回放地址，确保停播消息携带最新值
+        if (StringUtils.isNotBlank(playbackUrl)) {
+            room.setPlaybackUrl(playbackUrl);
+        }
         // 发布直播结束消息（回放生成、停播提醒等由订阅方处理）
         publishStopEvent(room);
     }
@@ -185,6 +189,8 @@ public class LiveRoomServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> i
         msg.setLiveId(room.getId());
         msg.setTitle(room.getTitle());
         msg.setEndTime(LocalDateTime.now());
+        msg.setPlaybackUrl(room.getPlaybackUrl());
+        msg.setUserIds(queryEnrolledUserIds(room.getId()));
         boolean sent = rocketMqHelper.sendSync(MqConstants.Topic.LIVE_TOPIC,
                 MqConstants.Tag.LIVE_STOP_TAG, "live-stop-" + room.getId(), msg);
         if (!sent) {

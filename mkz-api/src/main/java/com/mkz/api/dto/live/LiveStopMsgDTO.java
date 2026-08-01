@@ -6,6 +6,7 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 直播结束消息（RocketMQ 跨服务消息体：mkz-live 发布，供消息中心等订阅）
@@ -23,4 +24,10 @@ public class LiveStopMsgDTO implements Serializable {
 
     @ApiModelProperty("实际结束时间")
     private LocalDateTime endTime;
+
+    @ApiModelProperty("回放地址（可为空）")
+    private String playbackUrl;
+
+    @ApiModelProperty("已报名用户id列表")
+    private List<Long> userIds;
 }
