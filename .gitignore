@@ -21,3 +21,11 @@ __pycache__/
 *.pyc
 .venv/
 .env
+
+# ===== 本地密钥覆盖（真实凭据，禁止提交/上传）=====
+# 真实云密钥放在各模块 src/main/resources/application-dev.yml（dev 环境自动加载，覆盖 bootstrap.yml 占位符）
+# 该文件已被忽略，绝不会进入 git / 远程仓库
+**/src/main/resources/application-dev.yml
+**/src/main/resources/application-local.yml
+**/src/main/resources/bootstrap-secret.yml
+**/src/main/resources/secrets.yml
