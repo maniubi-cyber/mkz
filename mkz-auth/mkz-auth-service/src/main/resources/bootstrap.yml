@@ -30,7 +30,7 @@ encrypt:
     location: classpath:mkz.jks  #KeyStore 证书库名称
     password: tj123321   #证书库密码
     secret: tj123321   #秘钥
-tj:
+mkz:
   swagger:
     enable: true
     enableResponseWrap: true
@@ -54,4 +54,4 @@ tj:
       secret: 68918d65287802a19b1905cbda7eaa93
       expire: 120
   jdbc:
-    database: tj_auth
+    database: mkz_auth

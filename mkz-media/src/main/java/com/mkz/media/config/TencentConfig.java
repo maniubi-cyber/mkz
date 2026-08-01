@@ -29,7 +29,7 @@ import java.util.concurrent.Executors;
 public class TencentConfig {
 
     @Bean
-    @ConditionalOnProperty(prefix = "tj.platform", name = "media", havingValue = "TENCENT")
+    @ConditionalOnProperty(prefix = "mkz.platform", name = "media", havingValue = "TENCENT")
     public VodClient tencentVodClient(TencentProperties properties){
         // 1.授权信息
         Credential cred = new Credential(
@@ -46,20 +46,20 @@ public class TencentConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "tj.platform", name = "media", havingValue = "TENCENT")
+    @ConditionalOnProperty(prefix = "mkz.platform", name = "media", havingValue = "TENCENT")
     public VodUploadClient tencentVodUploadClient(TencentProperties properties){
         // 1.初始化客户端
         return new VodUploadClient(properties.getSecretId(), properties.getSecretKey());
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "tj.platform", name = "media", havingValue = "TENCENT")
+    @ConditionalOnProperty(prefix = "mkz.platform", name = "media", havingValue = "TENCENT")
     public IMediaStorage tencentMediaStorage(VodClient tencentVodClient, TencentProperties properties){
         return new TencentMediaStorage(tencentVodClient, properties);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "tj.platform", name = "file", havingValue = "TENCENT")
+    @ConditionalOnProperty(prefix = "mkz.platform", name = "file", havingValue = "TENCENT")
     public COSClient tencentCosClient(TencentProperties properties){
         // 1.授权信息
         COSCredentials cred = new BasicCOSCredentials(properties.getSecretId(), properties.getSecretKey());
@@ -71,7 +71,7 @@ public class TencentConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "tj.platform", name = "file", havingValue = "TENCENT")
+    @ConditionalOnProperty(prefix = "mkz.platform", name = "file", havingValue = "TENCENT")
     public TransferManager transferManager(COSClient tencentCosClient, TencentProperties properties){
         // 自定义线程池大小，建议在客户端与 COS 网络充足（例如使用腾讯云的 CVM，同地域上传 COS）的情况下，设置成16或32即可，可较充分的利用网络资源
         // 对于使用公网传输且网络带宽质量不高的情况，建议减小该值，避免因网速过慢，造成请求超时。
@@ -91,7 +91,7 @@ public class TencentConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "tj.platform", name = "file", havingValue = "TENCENT")
+    @ConditionalOnProperty(prefix = "mkz.platform", name = "file", havingValue = "TENCENT")
     public IFileStorage tencentFileStorage(
             COSClient tencentCosClient, TransferManager transferManager, TencentProperties properties){
         return new TencentFileStorage(tencentCosClient, transferManager, properties);

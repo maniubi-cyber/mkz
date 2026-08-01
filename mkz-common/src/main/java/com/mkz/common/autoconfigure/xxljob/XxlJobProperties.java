@@ -4,7 +4,7 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @Data
-@ConfigurationProperties(prefix = "tj.xxl-job")
+@ConfigurationProperties(prefix = "mkz.xxl-job")
 public class XxlJobProperties {
 
     private String accessToken;

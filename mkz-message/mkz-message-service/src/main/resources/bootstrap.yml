@@ -28,7 +28,7 @@ spring:
             refresh: false
           - data-id: shared-rocketmq.yaml # 共享加密配置
             refresh: false
-tj:
+mkz:
   swagger:
     enable: true
     enableResponseWrap: true
@@ -45,7 +45,7 @@ tj:
       excludeLoginPaths:
         - /students/register
   jdbc:
-    database: tj_message
+    database: mkz_message
   sms:
     ali:
       accessId: xxx

@@ -4,7 +4,7 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @Data
-@ConfigurationProperties(prefix = "tj.ali")
+@ConfigurationProperties(prefix = "mkz.ali")
 public class AliProperties {
     private String accessId;
     private String accessKey;

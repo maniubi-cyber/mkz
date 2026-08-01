@@ -22,7 +22,7 @@ spring:
           - dataId: shared-mq.yaml # 共享mq配置
           - dataId: shared-xxljob.yaml # 共享mq配置
           - dataId: shared-seata.yaml # 共享seata配置
-tj:
+mkz:
   swagger:
     enable: true
     enableResponseWrap: true
@@ -34,7 +34,7 @@ tj:
     contact-email: 1418875140@qq.com
     version: v1.0
   jdbc:
-    database: tj_exam
+    database: mkz_exam
   auth:
     resource:
       enable: false

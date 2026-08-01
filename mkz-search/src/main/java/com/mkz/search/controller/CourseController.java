@@ -2,7 +2,7 @@ package com.mkz.search.controller;
 
 import com.mkz.api.client.search.SearchClient;
 import com.mkz.common.domain.dto.PageDTO;
-import com.mkz.common.ratelimiter.annotation.TjRateLimiter;
+import com.mkz.common.ratelimiter.annotation.MkzRateLimiter;
 import com.mkz.search.domain.query.CoursePageQuery;
 import com.mkz.search.domain.vo.CourseVO;
 import com.mkz.search.service.ICourseService;
@@ -28,7 +28,7 @@ public class CourseController {
 
 
     @ApiOperation("用户端课程搜索接口")
-    @TjRateLimiter(name= "search",permitsPerSecond = 5)
+    @MkzRateLimiter(name= "search",permitsPerSecond = 5)
     @GetMapping("/portal")
     public PageDTO<CourseVO> queryCoursesForPortal(CoursePageQuery query){
         return searchService.queryCoursesForPortal(query);

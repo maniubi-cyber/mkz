@@ -9,7 +9,7 @@ import com.mkz.auth.domain.po.Menu;
 import com.mkz.auth.domain.vo.MenuOptionVO;
 import com.mkz.auth.service.ICodeService;
 import com.mkz.auth.service.IMenuService;
-import com.mkz.common.ratelimiter.annotation.TjRateLimiter;
+import com.mkz.common.ratelimiter.annotation.MkzRateLimiter;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
@@ -39,7 +39,7 @@ public class CodeController {
 
     @PostMapping("/verifycode")
     @ApiOperation("注册发送短信验证码")
-    @TjRateLimiter(permitsPerSecond = 3000, timeout = 0)
+    @MkzRateLimiter(permitsPerSecond = 3000, timeout = 0)
     public void sendVerfiycode(@RequestParam String cellPhone){
         codeService.sendVerifyCode(cellPhone);
     }

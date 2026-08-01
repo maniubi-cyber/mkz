@@ -3,7 +3,7 @@ package com.mkz.common.ratelimiter.Aspect;
 import cn.hutool.core.util.StrUtil;
 import com.google.common.util.concurrent.RateLimiter;
 import com.mkz.common.exceptions.CommonException;
-import com.mkz.common.ratelimiter.annotation.TjRateLimiter;
+import com.mkz.common.ratelimiter.annotation.MkzRateLimiter;
 import com.mkz.common.ratelimiter.machine.CFRateLimiter;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -36,21 +36,21 @@ public class RateLimiterAspect implements EnvironmentAware {
     @Value("${rate.limit.local.default.timeout:1}")
     private long defaultTimeout;
 
-    @Pointcut("@annotation(tjRateLimiter)")
-    public void pointCut(TjRateLimiter tjRateLimiter){
+    @Pointcut("@annotation(mkzRateLimiter)")
+    public void pointCut(MkzRateLimiter mkzRateLimiter){
 
     }
 
-    @Around(value = "pointCut(tjRateLimiter)")
-    public Object around(ProceedingJoinPoint pjp, TjRateLimiter tjRateLimiter) throws Throwable {
+    @Around(value = "pointCut(mkzRateLimiter)")
+    public Object around(ProceedingJoinPoint pjp, MkzRateLimiter mkzRateLimiter) throws Throwable {
         MethodSignature signature = (MethodSignature) pjp.getSignature();
         String className = pjp.getTarget().getClass().getSimpleName();
         String methodName = signature.getName();
-        String rateLimitName = environment.resolvePlaceholders(tjRateLimiter.name());
+        String rateLimitName = environment.resolvePlaceholders(mkzRateLimiter.name());
         if (StrUtil.isEmpty(rateLimitName) || rateLimitName.contains("${")) {
             rateLimitName = className + "-" + methodName;
         }
-        CFRateLimiter rateLimiter = this.getRateLimiter(rateLimitName, tjRateLimiter);
+        CFRateLimiter rateLimiter = this.getRateLimiter(rateLimitName, mkzRateLimiter);
         boolean success = rateLimiter.tryAcquire();
         Object[] args = pjp.getArgs();
         if (success){
@@ -63,7 +63,7 @@ public class RateLimiterAspect implements EnvironmentAware {
     /**
      * 获取CFRateLimiter对象
      */
-    private CFRateLimiter getRateLimiter(String rateLimitName, TjRateLimiter seckillRateLimiter) {
+    private CFRateLimiter getRateLimiter(String rateLimitName, MkzRateLimiter seckillRateLimiter) {
         //先从Map缓存中获取
         CFRateLimiter bhRateLimiter = BH_RATE_LIMITER_MAP.get(rateLimitName);
         //如果获取的bhRateLimiter为空，则创建bhRateLimiter，注意并发，创建的时候需要加锁

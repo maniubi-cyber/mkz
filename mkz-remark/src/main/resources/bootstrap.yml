@@ -24,7 +24,7 @@ spring:
             refresh: false
           - data-id: shared-mq.yaml # 共享mq配置
             refresh: false
-tj:
+mkz:
   swagger:
     enable: true
     enableResponseWrap: true
@@ -36,7 +36,7 @@ tj:
     contact-email: 1418875140@qq.com
     version: v1.0
   jdbc:
-    database: tj_remark
+    database: mkz_remark
   auth:
     resource:
       enable: true # 登录拦截功能

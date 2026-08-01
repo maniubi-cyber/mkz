@@ -15,3 +15,9 @@ target
 .project
 logs
 job
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env

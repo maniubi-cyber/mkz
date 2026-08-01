@@ -110,7 +110,7 @@ public class ShareServiceImpl implements IShareService {
     }
 
     private String buildShortUrl(String shortCode) {
-        // 这里应返回完整的短链接，例如：https://tj.com/s/{shortCode}
+        // 这里应返回完整的短链接，例如：https://mkz.com/s/{shortCode}
         return shortCode;
     }
 

@@ -3,7 +3,7 @@ package com.mkz.common.autoconfigure.swagger;
 import cn.hutool.core.convert.ConverterRegistry;
 import com.fasterxml.classmate.TypeResolver;
 import com.mkz.common.domain.R;
-import com.mkz.common.utils.TjTemporalConverter;
+import com.mkz.common.utils.MkzTemporalConverter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -20,7 +20,7 @@ import javax.annotation.Resource;
 import java.time.LocalDateTime;
 
 @Configuration
-@ConditionalOnProperty(prefix = "tj.swagger", name = "enable",havingValue = "true")
+@ConditionalOnProperty(prefix = "mkz.swagger", name = "enable",havingValue = "true")
 @EnableConfigurationProperties(SwaggerConfigProperties.class)
 public class Knife4jConfiguration {
 
@@ -53,19 +53,19 @@ public class Knife4jConfiguration {
     }
     @Bean
     @Primary
-    @ConditionalOnProperty(prefix = "tj.swagger", name = "enableResponseWrap",havingValue = "true")
+    @ConditionalOnProperty(prefix = "mkz.swagger", name = "enableResponseWrap",havingValue = "true")
     public BaseSwaggerResponseModelPlugin baseSwaggerResponseModelPlugin(){
         return new BaseSwaggerResponseModelPlugin();
     }
     @Bean
     @Primary
-    @ConditionalOnProperty(prefix = "tj.swagger", name = "enableResponseWrap",havingValue = "true")
+    @ConditionalOnProperty(prefix = "mkz.swagger", name = "enableResponseWrap",havingValue = "true")
     public BaseSwaggerResponseBuilderPlugin baseSwaggerResponseBuilderPlugin(){
         return new BaseSwaggerResponseBuilderPlugin();
     }
     {
         // hutool的日期转换器加载
         ConverterRegistry converterRegistry = ConverterRegistry.getInstance();
-        converterRegistry.putCustom(LocalDateTime.class, new TjTemporalConverter(LocalDateTime.class));
+        converterRegistry.putCustom(LocalDateTime.class, new MkzTemporalConverter(LocalDateTime.class));
     }
 }

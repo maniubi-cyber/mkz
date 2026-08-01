@@ -13,7 +13,7 @@ import java.util.Set;
  */
 @Data
 @Component
-@ConfigurationProperties(prefix = "tj.data")
+@ConfigurationProperties(prefix = "mkz.data")
 public class LogProperties implements InitializingBean {
 
     private Set<String> excludePath;

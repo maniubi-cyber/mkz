@@ -222,7 +222,7 @@ const player = ref(null)
 const initPlay = (fileID, psign, appID) => {
   if (appID == null || appID === '') {
     ElMessage({
-      message: '服务端未返回云点播 AppId，请检查媒资服务 tj.platform.media=TENCENT 与 tj.tencent.appId',
+      message: '服务端未返回云点播 AppId，请检查媒资服务 mkz.platform.media=TENCENT 与 mkz.tencent.appId',
       type: 'error'
     })
     return

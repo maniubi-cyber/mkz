@@ -23,7 +23,7 @@ spring:
           - data-id: shared-rocketmq.yaml # 共享rocketmq配置
           - data-id: shared-seata.yaml # 共享seata配置
           - data-id: shared-xxljob.yaml # 共享seata配置
-tj:
+mkz:
   swagger:
     enable: true
     package-path: com.mkz.course.controller
@@ -38,4 +38,4 @@ tj:
     resource:
       enable: false
   jdbc:
-    database: tj_course
+    database: mkz_course

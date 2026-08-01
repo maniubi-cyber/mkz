@@ -47,11 +47,11 @@ public class AccountServiceImpl implements IAccountService {
     private final RestTemplate restTemplate;
     private final StringRedisTemplate redisTemplate;
 
-    @Value("${tj.auth.weixin.appid}")
+    @Value("${mkz.auth.weixin.appid}")
     private String appid;
-    @Value("${tj.auth.weixin.secret}")
+    @Value("${mkz.auth.weixin.secret}")
     private String secret;
-    @Value("${tj.auth.weixin.expire}")
+    @Value("${mkz.auth.weixin.expire}")
     private Long qrcodeExpire; // 二维码有效期，单位秒
 
     @Override

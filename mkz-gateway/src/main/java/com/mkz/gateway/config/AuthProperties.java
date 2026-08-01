@@ -9,7 +9,7 @@ import java.util.Set;
 
 @Data
 @Component
-@ConfigurationProperties(prefix = "tj.auth")
+@ConfigurationProperties(prefix = "mkz.auth")
 public class AuthProperties implements InitializingBean {
 
     private Set<String> excludePath;

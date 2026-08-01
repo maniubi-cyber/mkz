@@ -5,7 +5,7 @@ package com.mkz.learning.controller;/**
 
 import com.mkz.common.domain.R;
 import com.mkz.common.exceptions.BadRequestException;
-import com.mkz.common.ratelimiter.annotation.TjRateLimiter;
+import com.mkz.common.ratelimiter.annotation.MkzRateLimiter;
 import com.mkz.common.utils.UserContext;
 import com.mkz.learning.domain.dto.ShareDetailDTO;
 import com.mkz.learning.domain.dto.ShareLinkDTO;
@@ -33,7 +33,7 @@ public class ShareController {
      * @param courseId 课程ID
      * @return 分享链接DTO
      */
-    @TjRateLimiter(permitsPerSecond = 1, timeout = 1)
+    @MkzRateLimiter(permitsPerSecond = 1, timeout = 1)
     @PostMapping("/generate/{id}")
     @ApiOperation("生成课程分享链接")
     public ShareLinkDTO generateShareLink(@PathVariable("id") Long courseId) {

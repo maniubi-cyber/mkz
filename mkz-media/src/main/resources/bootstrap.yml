@@ -27,7 +27,7 @@ spring:
             refresh: false
           - data-id: shared-feign.yaml # 共享feign配置
             refresh: false
-tj:
+mkz:
   swagger:
     enable: true
     package-path: com.mkz.media.controller
@@ -44,7 +44,7 @@ tj:
       excludeLoginPaths:
         - /medias/signature/play
   jdbc:
-    database: tj_media
+    database: mkz_media
   platform:
     file: MINIO
     media: TENCENT

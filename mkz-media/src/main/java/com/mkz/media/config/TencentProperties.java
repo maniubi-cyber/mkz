@@ -4,7 +4,7 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @Data
-@ConfigurationProperties(prefix = "tj.tencent")
+@ConfigurationProperties(prefix = "mkz.tencent")
 public class TencentProperties {
     private Long appId;
     private String secretId;

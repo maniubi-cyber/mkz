@@ -9,6 +9,6 @@ mybatis-plus:
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://${tj.jdbc.host:192.168.150.101}:${tj.jdbc.port:3306}/${tj.jdbc.database}?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai
-    username: ${tj.jdbc.username:root}
-    password: ${tj.jdbc.password:123}
+    url: jdbc:mysql://${mkz.jdbc.host:192.168.150.101}:${mkz.jdbc.port:3306}/${mkz.jdbc.database}?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai
+    username: ${mkz.jdbc.username:root}
+    password: ${mkz.jdbc.password:123}

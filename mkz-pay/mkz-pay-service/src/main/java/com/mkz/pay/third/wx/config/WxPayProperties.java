@@ -4,7 +4,7 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @Data
-@ConfigurationProperties(prefix = "tj.pay.wx")
+@ConfigurationProperties(prefix = "mkz.pay.wx")
 public class WxPayProperties{
     /**
      * appId

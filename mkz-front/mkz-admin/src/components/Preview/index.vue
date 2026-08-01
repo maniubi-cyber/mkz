@@ -54,7 +54,7 @@ const getId = async (mediaId) => {
 const initPlay = (fileID, psign, vodAppId) => {
   if (vodAppId == null || vodAppId === "") {
     ElMessage({
-      message: "服务端未返回云点播 AppId，请检查 tj.platform.media=TENCENT 与 tj.tencent.appId 配置",
+      message: "服务端未返回云点播 AppId，请检查 mkz.platform.media=TENCENT 与 mkz.tencent.appId 配置",
       type: "error",
       showClose: false,
     });

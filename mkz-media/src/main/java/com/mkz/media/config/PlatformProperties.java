@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 
 @Data
 @Component
-@ConfigurationProperties(prefix = "tj.platform")
+@ConfigurationProperties(prefix = "mkz.platform")
 public class PlatformProperties {
     private Platform file;
     private Platform media;

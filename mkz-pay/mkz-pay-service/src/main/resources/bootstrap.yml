@@ -21,7 +21,7 @@ spring:
           - dataId: shared-feign.yaml # 共享feign配置
           - dataId: shared-mq.yaml # 共享mq配置
           - dataId: shared-xxljob.yaml # 共享mq配置
-tj:
+mkz:
   swagger:
     enable: true
     enableResponseWrap: true
@@ -33,7 +33,7 @@ tj:
     contact-email: 1418875140@qq.com
     version: v1.0
   jdbc:
-    database: tj_pay
+    database: mkz_pay
   pay:
     notifyHost: https://6b9f16dd.r2.cpolar.top/ps
     ali:

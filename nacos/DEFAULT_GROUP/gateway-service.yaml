@@ -1,4 +1,4 @@
-tj:
+mkz:
   auth:
     excludePath: # 无需登录即可访问的路径
       - /categorys/all

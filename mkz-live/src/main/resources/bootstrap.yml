@@ -26,7 +26,7 @@ spring:
             refresh: false
           - data-id: shared-xxljob.yaml # 共享job配置
             refresh: false
-tj:
+mkz:
   swagger:
     enable: true
     enableResponseWrap: true
@@ -38,7 +38,7 @@ tj:
     contact-email: 1418875140@qq.com
     version: v1.0
   jdbc:
-    database: tj_live
+    database: mkz_live
   auth:
     resource:
       enable: true

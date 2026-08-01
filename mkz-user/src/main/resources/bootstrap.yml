@@ -24,7 +24,7 @@ spring:
             refresh: false
           - data-id: shared-mq.yaml # 共享mq配置
             refresh: false
-tj:
+mkz:
   swagger:
     enable: true
     enableResponseWrap: true
@@ -48,4 +48,4 @@ tj:
         - /users/ids
         - /users/me
   jdbc:
-    database: tj_user
+    database: mkz_user

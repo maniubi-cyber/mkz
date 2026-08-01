@@ -20,7 +20,7 @@ import java.util.Map;
  * 知识库接口（薄网关层）。
  * <p>
  * AI 能力（向量切割、Embedding、RAG 检索与对话）通过 Feign 调用 mkz-ai-bridge 桥接服务。
- * 本地仅保留知识库元数据的分页查询、内容查看与更新（操作 tj_chat 库）。
+ * 本地仅保留知识库元数据的分页查询、内容查看与更新（操作 mkz_chat 库）。
  * </p>
  */
 @RestController

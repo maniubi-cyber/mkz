@@ -19,7 +19,7 @@ spring:
           - dataId: shared-logs.yaml # 共享日志配置
           - dataId: shared-feign.yaml # 共享feign配置
           - dataId: shared-qdrant.yaml
-tj:
+mkz:
   swagger:
     enable: true
     enableResponseWrap: true
@@ -31,7 +31,7 @@ tj:
     contact-email: 1418875140@qq.com
     version: v1.0
   jdbc:
-    database: tj_chat
+    database: mkz_chat
   auth:
     resource:
       enable: true

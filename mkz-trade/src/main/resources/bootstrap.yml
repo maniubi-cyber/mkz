@@ -21,7 +21,7 @@ spring:
           - dataId: shared-rocketmq.yaml # 共享rocketmq配置
           - dataId: shared-seata.yaml # 共享seata配置
           - dataId: shared-xxljob.yaml # 共享mq配置
-tj:
+mkz:
   swagger:
     enable: true
     enableResponseWrap: true
@@ -33,7 +33,7 @@ tj:
     contact-email: 1418875140@qq.com
     version: v1.0
   jdbc:
-    database: tj_trade
+    database: mkz_trade
   auth:
     resource:
       enable: true

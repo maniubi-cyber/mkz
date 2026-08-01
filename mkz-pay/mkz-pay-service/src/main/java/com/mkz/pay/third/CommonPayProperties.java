@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 
 @Data
 @Component
-@ConfigurationProperties(prefix = "tj.pay")
+@ConfigurationProperties(prefix = "mkz.pay")
 public class CommonPayProperties {
     private String notifyHost;
 }

@@ -14,14 +14,14 @@ import org.springframework.context.annotation.Configuration;
 public class AliConfig {
 
     @Bean
-    @ConditionalOnProperty(prefix = "tj.file", name = "platform", havingValue = "ALI")
+    @ConditionalOnProperty(prefix = "mkz.file", name = "platform", havingValue = "ALI")
     public OSS aliOssClient(AliProperties prop){
         return new OSSClientBuilder()
                 .build(prop.getOos().getEndpoint(), prop.getAccessId(), prop.getAccessKey());
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "tj.file", name = "platform", havingValue = "ALI")
+    @ConditionalOnProperty(prefix = "mkz.file", name = "platform", havingValue = "ALI")
     public IFileStorage aliFileStorage(OSS aliOssClient, AliProperties prop) {
         return new AliFileStorage(aliOssClient, prop.getOos().getBucket());
     }

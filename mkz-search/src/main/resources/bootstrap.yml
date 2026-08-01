@@ -26,7 +26,7 @@ spring:
             refresh: false
           - data-id: shared-rocketmq.yaml # 共享rocketmq配置
             refresh: false
-tj:
+mkz:
   swagger:
     enable: true
     package-path: com.mkz.search.controller
@@ -44,5 +44,5 @@ tj:
         - /interests/**
         - /courses/admin
   jdbc:
-    database: tj_search
+    database: mkz_search
 

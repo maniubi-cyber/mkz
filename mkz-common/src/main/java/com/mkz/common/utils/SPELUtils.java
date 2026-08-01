@@ -21,11 +21,11 @@ public class SPELUtils {
      * @param args        方法参数值value，用来进行退换对应的表达式
      * @return 模板替换后的字符串
      *
-     * 例    format : tj:#{user.id}
+     * 例    format : mkz:#{user.id}
      *      paraNameAddr [user]
      *      args [{"user":{"id":1}}]
      *
-     *      转换后结果 -> tj:1
+     *      转换后结果 -> mkz:1
      */
     public static String parse(String formatter, String[] paraNameArr, Object[] args) {
         if (StringUtils.isNotBlank(formatter) && formatter.indexOf("#") > -1) {
@@ -66,6 +66,6 @@ public class SPELUtils {
         Object [] users = new Object[1];
         users[0] = new User();
 
-        System.out.println(parse("tj:#{user.id}", new String[]{"user"}, users));
+        System.out.println(parse("mkz:#{user.id}", new String[]{"user"}, users));
     }
 }

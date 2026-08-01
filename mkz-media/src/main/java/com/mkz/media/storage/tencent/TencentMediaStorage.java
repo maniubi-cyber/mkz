@@ -96,7 +96,7 @@ public class TencentMediaStorage implements IMediaStorage {
         TencentProperties.VodProperties vod = tencentProperties.getVod();
         Integer transcodeDefinition = vod.getTranscodeDefinition();
         if (transcodeDefinition == null || transcodeDefinition <= 0) {
-            throw new CommonException("未正确配置 tj.tencent.vod.transcodeDefinition（正整数），请在云点播控制台创建转码模板并填入模板数字 ID");
+            throw new CommonException("未正确配置 mkz.tencent.vod.transcodeDefinition（正整数），请在云点播控制台创建转码模板并填入模板数字 ID");
         }
         long currentTime = System.currentTimeMillis() / 1000;
         long expireTimeStamp = currentTime + vod.getVodValidSeconds();

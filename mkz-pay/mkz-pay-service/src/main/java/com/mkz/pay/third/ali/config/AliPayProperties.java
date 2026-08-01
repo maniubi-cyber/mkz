@@ -4,7 +4,7 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @Data
-@ConfigurationProperties(prefix = "tj.pay.ali")
+@ConfigurationProperties(prefix = "mkz.pay.ali")
 public class AliPayProperties {
     private String protocol = "https";
 //    private String gatewayHost= "openapi.alipay.com";
