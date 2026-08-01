@@ -23,7 +23,7 @@ tj:
   swagger:
     enable: true
     enableResponseWrap: true
-    package-path: com.tianji.chat.controller
+    package-path: com.mkz.chat.controller
     title: 智慧MOOC - AI智能对话中心接口文档
     description: 该服务提供AI聊天、AI知识库分析等功能
     contact-name: 研究院

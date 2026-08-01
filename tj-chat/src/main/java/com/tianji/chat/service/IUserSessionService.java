@@ -1,11 +1,10 @@
-package com.tianji.chat.service;
+package com.mkz.chat.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
-import com.tianji.chat.domain.dto.UserSessionDTO;
-import com.tianji.chat.domain.po.ChatSession;
-import com.tianji.chat.domain.po.UserSession;
-import com.tianji.common.domain.query.PageQuery;
-import reactor.core.publisher.Flux;
+import com.mkz.chat.domain.dto.UserSessionDTO;
+import com.mkz.chat.domain.po.ChatSession;
+import com.mkz.chat.domain.po.UserSession;
+import com.mkz.common.domain.query.PageQuery;
 
 import java.util.List;
 

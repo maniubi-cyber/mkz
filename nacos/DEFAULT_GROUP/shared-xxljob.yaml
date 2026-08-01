@@ -1,6 +1,6 @@
 tj:
   xxl-job:
-    access-token: tianji
+    access-token: mkz
     admin:
       address: http://192.168.150.101:8880/xxl-job-admin
     executor:

@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
         <artifactId>tj-auth</artifactId>
-        <groupId>com.tianji</groupId>
+        <groupId>com.mkz</groupId>
         <version>1.0.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -17,7 +17,7 @@
     </properties>
     <dependencies>
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.mkz</groupId>
             <artifactId>tj-message-api</artifactId>
             <version>1.0.0</version>
             <exclusions>
@@ -28,7 +28,7 @@
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.mkz</groupId>
             <artifactId>tj-api</artifactId>
             <version>1.0.0</version>
             <exclusions>
@@ -99,7 +99,7 @@
         </dependency>
         <!--sdk-->
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.mkz</groupId>
             <artifactId>tj-auth-resource-sdk</artifactId>
             <version>1.0.0</version>
         </dependency>
@@ -118,7 +118,7 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <mainClass>com.tianji.auth.AuthApplication</mainClass>
+                    <mainClass>com.mkz.auth.AuthApplication</mainClass>
                 </configuration>
             </plugin>
         </plugins>

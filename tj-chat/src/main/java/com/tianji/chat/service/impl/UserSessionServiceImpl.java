@@ -1,15 +1,15 @@
-package com.tianji.chat.service.impl;
+package com.mkz.chat.service.impl;
 
 import cn.hutool.core.lang.UUID;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.tianji.chat.domain.dto.UserSessionDTO;
-import com.tianji.chat.domain.po.ChatSession;
-import com.tianji.chat.domain.po.UserSession;
-import com.tianji.chat.mapper.UserSessionMapper;
-import com.tianji.chat.service.IChatSessionService;
-import com.tianji.chat.service.IUserSessionService;
-import com.tianji.common.utils.UserContext;
+import com.mkz.chat.domain.dto.UserSessionDTO;
+import com.mkz.chat.domain.po.ChatSession;
+import com.mkz.chat.domain.po.UserSession;
+import com.mkz.chat.mapper.UserSessionMapper;
+import com.mkz.chat.service.IChatSessionService;
+import com.mkz.chat.service.IUserSessionService;
+import com.mkz.common.utils.UserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

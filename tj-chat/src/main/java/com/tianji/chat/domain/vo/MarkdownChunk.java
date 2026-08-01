@@ -1,4 +1,4 @@
-package com.tianji.chat.domain.vo;
+package com.mkz.chat.domain.vo;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

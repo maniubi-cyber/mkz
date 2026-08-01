@@ -1,4 +1,4 @@
-package com.tianji.chat.utils;
+package com.mkz.chat.utils;
 
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.embedding.Embedding;

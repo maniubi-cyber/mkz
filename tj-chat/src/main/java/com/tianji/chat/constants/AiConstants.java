@@ -1,4 +1,4 @@
-package com.tianji.chat.constants;
+package com.mkz.chat.constants;
 
 public interface AiConstants {
 

@@ -2,8 +2,8 @@ spring:
   rabbitmq:
     host: ${tj.mq.host:192.168.150.101}
     port: ${tj.mq.port:5672}
-    virtual-host: ${tj.mq.vhost:/tjxt}
-    username: ${tj.mq.username:tjxt}
+    virtual-host: ${tj.mq.vhost:/mkz}
+    username: ${tj.mq.username:mkz}
     password: ${tj.mq.password:123321}
     listener:
       simple:

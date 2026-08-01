@@ -3,8 +3,8 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
-        <artifactId>tjxt</artifactId>
-        <groupId>com.tianji</groupId>
+        <artifactId>mkz</artifactId>
+        <groupId>com.mkz</groupId>
         <version>1.0.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -28,18 +28,18 @@
         </dependency>
 
         <!--rocketmq-->
-<!--        <dependency>-->
-<!--            <groupId>org.apache.rocketmq</groupId>-->
-<!--            <artifactId>rocketmq-client</artifactId>-->
-<!--            <version>${rocketmq-client-version}</version>-->
-<!--            <scope>provided</scope>-->
-<!--        </dependency>-->
-<!--        <dependency>-->
-<!--            <groupId>org.apache.rocketmq</groupId>-->
-<!--            <artifactId>rocketmq-spring-boot-starter</artifactId>-->
-<!--            <version>${rocketmq-starter-version}</version>-->
-<!--            <scope>provided</scope>-->
-<!--        </dependency>-->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-client</artifactId>
+            <version>${rocketmq-client-version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-spring-boot-starter</artifactId>
+            <version>${rocketmq-starter-version}</version>
+            <scope>provided</scope>
+        </dependency>
 <!--        sentinel-->
         <dependency>
             <groupId>com.alibaba.csp</groupId>
@@ -77,6 +77,12 @@
             <groupId>com.baomidou</groupId>
             <artifactId>mybatis-plus-extension</artifactId>
             <version>${mybatis-plus.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <!--mybatis-spring：CommonServiceAutoConfiguration 使用 @MapperScan 扫描 com.mkz.common.mapper-->
+        <dependency>
+            <groupId>org.mybatis</groupId>
+            <artifactId>mybatis-spring</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>

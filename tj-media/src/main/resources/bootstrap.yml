@@ -30,7 +30,7 @@ spring:
 tj:
   swagger:
     enable: true
-    package-path: com.tianji.media.controller
+    package-path: com.mkz.media.controller
     title: 智慧MOOC - 媒资中心接口文档
     description: 该服务包含图片管理、媒资管理等
     contact-name: 研究院
@@ -72,4 +72,4 @@ minio:
   endpoint: http://192.168.150.101:9000
   accessKey: admin
   secretKey: admin123456
-  bucketName: tianji
+  bucketName: mkz

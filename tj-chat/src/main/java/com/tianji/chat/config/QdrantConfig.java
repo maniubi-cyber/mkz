@@ -1,4 +1,4 @@
-package com.tianji.chat.config;
+package com.mkz.chat.config;
 
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.store.embedding.EmbeddingStore;
@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Configuration;
 
 import javax.annotation.PostConstruct;
 
-import static com.tianji.chat.constants.AiConstants.QDRANT_COLLECTION;
+import static com.mkz.chat.constants.AiConstants.QDRANT_COLLECTION;
 
 @Data
 @Configuration

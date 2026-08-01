@@ -1,4 +1,4 @@
-package com.tianji.chat.domain.dto;
+package com.mkz.chat.domain.dto;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;

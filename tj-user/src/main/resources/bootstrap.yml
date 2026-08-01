@@ -28,7 +28,7 @@ tj:
   swagger:
     enable: true
     enableResponseWrap: true
-    package-path: com.tianji.user.controller
+    package-path: com.mkz.user.controller
     title: 智慧MOOC - 用户中心接口文档
     description: 该服务用户管理、用户信息管理
     contact-name: 研究院

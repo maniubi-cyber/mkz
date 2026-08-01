@@ -1,7 +1,7 @@
 /*
  Navicat Premium Dump SQL
 
- Source Server         : tianji
+ Source Server         : mkz
  Source Server Type    : MySQL
  Source Server Version : 80029 (8.0.29)
  Source Host           : 192.168.150.101:3306
@@ -40,6 +40,7 @@ CREATE TABLE `coupon`  (
   `total_num` int NOT NULL DEFAULT 0 COMMENT '总数量，不超过5000',
   `issue_num` int NOT NULL DEFAULT 0 COMMENT '已发行数量，用于判断是否超发',
   `used_num` int NOT NULL DEFAULT 0 COMMENT '已使用数量',
+  `version` int NOT NULL DEFAULT 0 COMMENT '版本号，用于乐观锁',
   `user_limit` int NOT NULL DEFAULT 1 COMMENT '每个人限领的数量，默认1',
   `ext_param` json NULL COMMENT '拓展参数字段，保留字段',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',

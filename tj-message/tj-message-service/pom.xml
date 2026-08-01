@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
         <artifactId>tj-message</artifactId>
-        <groupId>com.tianji</groupId>
+        <groupId>com.mkz</groupId>
         <version>1.0.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -37,7 +37,7 @@
             <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.mkz</groupId>
             <artifactId>tj-auth-gateway-sdk</artifactId>
             <version>1.0.0</version>
         </dependency>
@@ -48,7 +48,7 @@
 <!--            <version>2.7.2</version>-->
 <!--        </dependency>-->
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.mkz</groupId>
             <artifactId>tj-auth-resource-sdk</artifactId>
             <version>1.0.0</version>
         </dependency>
@@ -91,17 +91,17 @@
         </dependency>
         <!--api-->
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.mkz</groupId>
             <artifactId>tj-api</artifactId>
             <version>1.0.0</version>
         </dependency>
 <!--        <dependency>-->
-<!--            <groupId>com.tianji</groupId>-->
+<!--            <groupId>com.mkz</groupId>-->
 <!--            <artifactId>tj-common</artifactId>-->
 <!--            <version>1.0.0</version>-->
 <!--        </dependency>-->
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.mkz</groupId>
             <artifactId>tj-message-domain</artifactId>
             <version>1.0.0</version>
         </dependency>
@@ -111,16 +111,16 @@
             <artifactId>spring-boot-starter-amqp</artifactId>
         </dependency>
         <!--rocketmq-->
-<!--        <dependency>-->
-<!--            <groupId>org.apache.rocketmq</groupId>-->
-<!--            <artifactId>rocketmq-client</artifactId>-->
-<!--            <version>${rocketmq-client-version}</version>-->
-<!--        </dependency>-->
-<!--        <dependency>-->
-<!--            <groupId>org.apache.rocketmq</groupId>-->
-<!--            <artifactId>rocketmq-spring-boot-starter</artifactId>-->
-<!--            <version>${rocketmq-starter-version}</version>-->
-<!--        </dependency>-->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-client</artifactId>
+            <version>${rocketmq-client-version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-spring-boot-starter</artifactId>
+            <version>${rocketmq-starter-version}</version>
+        </dependency>
         <!--caffeine-->
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
@@ -157,7 +157,7 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <mainClass>com.tianji.message.MessageApplication</mainClass>
+                    <mainClass>com.mkz.message.MessageApplication</mainClass>
                 </configuration>
             </plugin>
         </plugins>

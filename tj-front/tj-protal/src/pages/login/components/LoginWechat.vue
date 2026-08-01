@@ -1,4 +1,4 @@
-<template>
+﻿<template>
     <div class="loginWechat">
         <!-- <div class="title">微信扫码登录</div> -->
         <div id="wxLogin" ref="wxLoginContainer" class="wx-login-container"></div>
@@ -31,7 +31,7 @@ let loginTimer = null;
 // 微信登录配置（需手动填写）
 const WX_CONFIG = {
     appid: 'wx17655f8047b85150', // TODO: 填入你的微信开放平台APPID
-    redirectUri: 'http://tjxt-user-t.itheima.net/xuecheng/auth/wxLogin', // TODO: 填入你的回调URL
+    redirectUri: 'http://mkz-user-t.itheima.net/xuecheng/auth/wxLogin', // TODO: 填入你的回调URL
 };
 
 // 生成唯一标识

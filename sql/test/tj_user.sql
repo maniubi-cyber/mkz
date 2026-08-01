@@ -1,7 +1,7 @@
 /*
  Navicat Premium Dump SQL
 
- Source Server         : tianji
+ Source Server         : mkz
  Source Server Type    : MySQL
  Source Server Version : 80029 (8.0.29)
  Source Host           : 192.168.150.101:3306
@@ -122,7 +122,7 @@ INSERT INTO `user_detail` VALUES (2, 2, '杰克', 0, '/img-tx/0abcd1d7a66a4fad98
 INSERT INTO `user_detail` VALUES (5, 1, '妖怪', 0, 'https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/samantha/logo-icon-white-bg.png', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 5, 0, '2025-05-18 13:12:45', '2025-05-23 15:35:01', 1, 1, 0);
 INSERT INTO `user_detail` VALUES (129, 2, '萝丝', 1, '/img-tx/a71d11ed64ac40668bdfa5bfc63b97bf.png', '', '', NULL, NULL, '山西省', '长治市', '潞州区', NULL, NULL, 2, 0, '2022-07-18 18:16:40', '2025-06-23 12:04:45', 1, 1, 0);
 INSERT INTO `user_detail` VALUES (9999, 3, '天机小助理', 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 4, 0, '2025-08-17 13:31:11', '2025-08-17 13:31:11', NULL, 0, 0);
-INSERT INTO `user_detail` VALUES (1548889371405492225, 3, '罗老师', 0, '/img-tx/1.jpg', '', '', NULL, '讲师555533444', NULL, NULL, NULL, 'Sklearn机器学习工具源码贡献者；Google Tensorflow中文社区开发者；具有多年企业级AI项目开发经验，对推荐系统，NLP，知识图谱，问答系统有较深入研究。', 'http://192.168.150.101:9000/tianji/2025/06/03/3cc34f7d2bde400a8d213056f41eb1ce.jpg', 3, NULL, '2022-07-18 12:36:18', '2025-06-11 18:41:19', 1, 1, 0);
+INSERT INTO `user_detail` VALUES (1548889371405492225, 3, '罗老师', 0, '/img-tx/1.jpg', '', '', NULL, '讲师555533444', NULL, NULL, NULL, 'Sklearn机器学习工具源码贡献者；Google Tensorflow中文社区开发者；具有多年企业级AI项目开发经验，对推荐系统，NLP，知识图谱，问答系统有较深入研究。', 'http://192.168.150.101:9000/mkz/2025/06/03/3cc34f7d2bde400a8d213056f41eb1ce.jpg', 3, NULL, '2022-07-18 12:36:18', '2025-06-11 18:41:19', 1, 1, 0);
 INSERT INTO `user_detail` VALUES (1548940676303970306, 3, '张老师', 0, '/img-tx/header_default.png', '', '', NULL, '讲师', NULL, NULL, NULL, '拥有全栈开发能力，精通各类 Web 前端开发技术以及后端Java技术栈、Node.js技术栈等。乐于帮助学生成长为专业软件开发从业者。', '/img-tx/ff4e37433bc54621b7e237926c3c5998.jpg', 3, NULL, '2022-07-18 16:00:10', '2022-11-08 15:49:18', 1, 1, 0);
 INSERT INTO `user_detail` VALUES (1548940777449611265, 3, '王老师', 0, '/img-tx/header_default.png', '', '', NULL, '讲师', NULL, NULL, NULL, '拥有9年设计经验，曾服务北京正邦品牌策划，百度用户体验中心，北京资海科技集团，龙采科技集团，优逸客科技教育集团，洛杉矶张大钦律师事务所等众多一线互联网设计与外包平台。', '/img-tx/262241a6efd147c9b3c849561720429f.jpg', 3, NULL, '2022-07-18 16:00:34', '2022-11-08 15:49:25', 1, 1, 0);
 INSERT INTO `user_detail` VALUES (1548940921662365698, 3, '李老师', 0, '/img-tx/header_default.png', '', '', NULL, '讲师', NULL, NULL, NULL, 'Apache Flink源码贡献者。专注于亿级用户规模的大数据平台研发建设和研发，历任项目经理、工程师、技术总监等职务', '/img-tx/8d025db3e8ed4e47a4bbdd3fe485f03e.jpg', 3, NULL, '2022-07-18 16:01:09', '2022-11-08 15:49:31', 1, 1, 0);

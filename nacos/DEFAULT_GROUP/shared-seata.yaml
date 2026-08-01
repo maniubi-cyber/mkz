@@ -8,10 +8,10 @@ seata:
       application: seata-server # seata服务名称
       username: nacos
       password: nacos
-  tx-service-group: tjxt # 事务组名称
+  tx-service-group: mkz # 事务组名称
   service:
     vgroup-mapping: # 事务组与cluster的映射关系
-      tjxt: "default"
+      mkz: "default"
   enable-auto-undo-log-creation: true  # 启用自动创建undo_log表
   sql-dialect: mysql  # 显式指定数据库方言
   enable-auto-data-source-proxy: true  # 启用自动数据源代理

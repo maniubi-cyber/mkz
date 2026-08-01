@@ -1,10 +1,10 @@
-package com.tianji.chat.controller;
+package com.mkz.chat.controller;
 
-import com.tianji.chat.domain.dto.UserSessionDTO;
-import com.tianji.chat.domain.po.UserSession;
-import com.tianji.chat.service.IUserSessionService;
-import com.tianji.common.domain.query.PageQuery;
-import com.tianji.common.utils.UserContext;
+import com.mkz.chat.domain.dto.UserSessionDTO;
+import com.mkz.chat.domain.po.UserSession;
+import com.mkz.chat.service.IUserSessionService;
+import com.mkz.common.domain.query.PageQuery;
+import com.mkz.common.utils.UserContext;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;

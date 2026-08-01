@@ -3,8 +3,8 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
-        <artifactId>tjxt</artifactId>
-        <groupId>com.tianji</groupId>
+        <artifactId>mkz</artifactId>
+        <groupId>com.mkz</groupId>
         <version>1.0.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -18,13 +18,13 @@
     <dependencies>
         <!--auth-sdk-->
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.mkz</groupId>
             <artifactId>tj-auth-resource-sdk</artifactId>
             <version>1.0.0</version>
         </dependency>
         <!--api-->
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.mkz</groupId>
             <artifactId>tj-api</artifactId>
             <version>1.0.0</version>
         </dependency>
@@ -97,6 +97,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-amqp</artifactId>
         </dependency>
+        <!--rocketmq：消费订单支付成功消息，把课程加入用户课表-->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-spring-boot-starter</artifactId>
+        </dependency>
         <!--xxl-job-->
         <dependency>
             <groupId>com.xuxueli</groupId>
@@ -122,7 +127,7 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <mainClass>com.tianji.learning.LearningApplication</mainClass>
+                    <mainClass>com.mkz.learning.LearningApplication</mainClass>
                 </configuration>
             </plugin>
         </plugins>

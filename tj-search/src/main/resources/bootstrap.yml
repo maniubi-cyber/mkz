@@ -24,10 +24,12 @@ spring:
             refresh: false
           - data-id: shared-mq.yaml # 共享MQ配置
             refresh: false
+          - data-id: shared-rocketmq.yaml # 共享rocketmq配置
+            refresh: false
 tj:
   swagger:
     enable: true
-    package-path: com.tianji.search.controller
+    package-path: com.mkz.search.controller
     title: 智慧MOOC - 搜索系统接口文档
     description: 该服务包含课程搜索、兴趣推荐等相关功能
     contact-name: 研究院

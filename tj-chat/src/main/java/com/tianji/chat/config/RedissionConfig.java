@@ -1,4 +1,4 @@
-package com.tianji.chat.config;
+package com.mkz.chat.config;
 
 import com.baomidou.mybatisplus.core.toolkit.StringUtils;
 import org.redisson.Redisson;

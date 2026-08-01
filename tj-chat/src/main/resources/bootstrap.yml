@@ -1,6 +1,7 @@
 server:
-#  port: 9999  #端口
-  port: 8094  #有时候端口被占用
+#  tj-chat 现为薄网关层，AI 能力已委托 Python 服务（tj-chat-ai，端口 8094）。
+#  为避免与 Python 服务端口冲突，本服务改用 9999 端口。
+  port: 9999  #端口
   tomcat:
     uri-encoding: UTF-8   #服务编码
 spring:
@@ -24,7 +25,7 @@ tj:
   swagger:
     enable: true
     enableResponseWrap: true
-    package-path: com.tianji.chat.controller
+    package-path: com.mkz.chat.controller
     title: 智慧MOOC - AI智能对话中心接口文档
     description: 该服务提供AI聊天、AI知识库分析等功能
     contact-name: 研究院
@@ -41,6 +42,8 @@ tj:
     listener:
       retry:
         stateless: false # mq开启无状态
+# tj-chat 通过 Feign 调用 tj-ai-bridge 桥接服务（注册名 ai-bridge-service），
+# 桥接服务内部用 OpenFeign 调 Python AI 服务（FastAPI + LangChain + Chroma）并封装统一响应体。
 langchain4j:
   base-url: http://localhost:11434/v1  #本地ollama
   api-key: EMPTY

@@ -11,7 +11,7 @@ spring:
     url: http://192.168.150.101:8006
 #    password: 123456
 #    user: admin
-    mapper-location: com.tianji.data.influxdb.mapper
+    mapper-location: com.mkz.data.influxdb.mapper
   cloud:
     nacos:
       config:
@@ -35,7 +35,7 @@ tj:
   swagger:
     enable: true
     enableResponseWrap: true
-    package-path: com.tianji.data.controller
+    package-path: com.mkz.data.controller
     title: 智慧MOOC - 数据中心接口文档
     description: 该服务包含数据看板统计的功能
     contact-name: 研究院

@@ -1,4 +1,4 @@
-package com.tianji.chat.domain.query;
+package com.mkz.chat.domain.query;
 
 import dev.langchain4j.model.output.structured.Description;
 import lombok.Data;

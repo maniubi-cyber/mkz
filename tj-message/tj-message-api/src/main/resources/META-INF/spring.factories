@@ -1,2 +1,2 @@
-org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
-  com.tianji.message.api.config.MessageClientConfiguration
+﻿org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  com.mkz.message.api.config.MessageClientConfiguration

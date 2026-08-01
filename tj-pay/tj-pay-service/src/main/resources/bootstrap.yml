@@ -25,7 +25,7 @@ tj:
   swagger:
     enable: true
     enableResponseWrap: true
-    package-path: com.tianji.pay.controller
+    package-path: com.mkz.pay.controller
     title: 智慧MOOC - 支付中心接口文档
     description: 该服务提供微信、支付宝等各种平台的支付、退款等功能
     contact-name: 研究院

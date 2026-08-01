@@ -3,8 +3,8 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
-        <artifactId>tjxt</artifactId>
-        <groupId>com.tianji</groupId>
+        <artifactId>mkz</artifactId>
+        <groupId>com.mkz</groupId>
         <version>1.0.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -50,17 +50,17 @@
         </dependency>
 
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.mkz</groupId>
             <artifactId>tj-pay-api</artifactId>
             <version>1.0.0</version>
         </dependency>
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.mkz</groupId>
             <artifactId>tj-api</artifactId>
             <version>1.0.0</version>
         </dependency>
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.mkz</groupId>
             <artifactId>tj-auth-resource-sdk</artifactId>
             <version>1.0.0</version>
         </dependency>
@@ -112,6 +112,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+        <!--rocketmq：订单支付成功异步通知学习服务，配合本地消息表保障最终一致性-->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-spring-boot-starter</artifactId>
         </dependency>
 
         <!--xxl-job-->

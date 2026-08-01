@@ -1,4 +1,4 @@
-package com.tianji.chat.domain.dto;
+package com.mkz.chat.domain.dto;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;

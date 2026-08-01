@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.tianji.message.mapper.GroupMemberMapper">
+<mapper namespace="com.mkz.message.mapper.GroupMemberMapper">
     <insert id="batchInsert">
         INSERT INTO group_members (group_id, user_id, joined_at)
         VALUES

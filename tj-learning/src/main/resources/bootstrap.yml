@@ -26,13 +26,15 @@ spring:
             refresh: false
           - data-id: shared-mq.yaml # 共享mq配置
             refresh: false
+          - data-id: shared-rocketmq.yaml # 共享rocketmq配置
+            refresh: false
           - data-id: shared-xxljob.yaml # 共享xxl-job配置
             refresh: false
 tj:
   swagger:
     enable: true
     enableResponseWrap: true
-    package-path: com.tianji.learning.controller
+    package-path: com.mkz.learning.controller
     title: 智慧MOOC - 学习中心接口文档
     description: 该服务包含用户学习的各种辅助功能
     contact-name: 研究院
@@ -57,6 +59,6 @@ logging:
 #    port: -1
 #    id: dubbo
 #  scan:
-#    base-packages: com.tianji.learning.dubbo.server  # 扫描服务实现类的包
+#    base-packages: com.mkz.learning.dubbo.server  # 扫描服务实现类的包
 #  cloud:
 #    subscribed-services:    # 订阅的服务（暂无）

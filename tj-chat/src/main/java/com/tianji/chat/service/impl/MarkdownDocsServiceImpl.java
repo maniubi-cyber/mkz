@@ -1,19 +1,19 @@
-package com.tianji.chat.service.impl;
+package com.mkz.chat.service.impl;
 
 import cn.hutool.core.lang.Assert;
 import cn.hutool.core.util.ObjectUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.tianji.chat.domain.po.MarkdownDocs;
-import com.tianji.chat.domain.vo.MarkdownChunk;
-import com.tianji.chat.domain.vo.MarkdownChunkVO;
-import com.tianji.chat.mapper.MarkdownDocsMapper;
-import com.tianji.chat.service.IMarkdownDocsService;
-import com.tianji.chat.utils.QdrantEmbeddingUtils;
-import com.tianji.common.domain.dto.PageDTO;
-import com.tianji.common.domain.query.PageQuery;
-import com.tianji.common.exceptions.BadRequestException;
-import com.tianji.common.utils.UserContext;
+import com.mkz.chat.domain.po.MarkdownDocs;
+import com.mkz.chat.domain.vo.MarkdownChunk;
+import com.mkz.chat.domain.vo.MarkdownChunkVO;
+import com.mkz.chat.mapper.MarkdownDocsMapper;
+import com.mkz.chat.service.IMarkdownDocsService;
+import com.mkz.chat.utils.QdrantEmbeddingUtils;
+import com.mkz.common.domain.dto.PageDTO;
+import com.mkz.common.domain.query.PageQuery;
+import com.mkz.common.exceptions.BadRequestException;
+import com.mkz.common.utils.UserContext;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
@@ -44,9 +44,9 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
-import static com.tianji.chat.constants.AiConstants.QDRANT_COLLECTION;
-import static com.tianji.chat.utils.MarkdownSplitter.getMarkdownChunksByH;
-import static com.tianji.chat.utils.MarkdownSplitter.smartSplitByHeading;
+import static com.mkz.chat.constants.AiConstants.QDRANT_COLLECTION;
+import static com.mkz.chat.utils.MarkdownSplitter.getMarkdownChunksByH;
+import static com.mkz.chat.utils.MarkdownSplitter.smartSplitByHeading;
 import static io.qdrant.client.ConditionFactory.matchKeyword;
 import static io.qdrant.client.WithPayloadSelectorFactory.enable;
 

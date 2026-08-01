@@ -1,8 +1,8 @@
 export default {
   development: {
     // 开发环境接口请求
-    // host: 'https://tjxt-dev.itheima.net/api',
-    host: 'http://api.tianji.com',
+    // host: 'https://mkz-dev.itheima.net/api',
+    host: 'http://api.mkz.com',
     // 开发环境 cdn 路径
     cdn: '',
   },
@@ -14,7 +14,7 @@ export default {
   },
   product: {
     // 正式环境接口地址
-    host: 'https://tjxt-user-t.itheima.net/api',
+    host: 'https://mkz-user-t.itheima.net/api',
     // 正式环境 cdn 路径
     cdn: '',
   },

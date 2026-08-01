@@ -1,0 +1,47 @@
+package com.mkz.auth.service.impl;/**
+ * @author fsq
+ * @date 2025/5/20 13:41
+ */
+
+import com.baomidou.mybatisplus.extension.service.IService;
+import com.mkz.api.client.user.StudentClient;
+import com.mkz.api.client.user.UserClient;
+import com.mkz.api.dto.user.StudentFormDTO;
+import com.mkz.auth.service.ICodeService;
+import com.mkz.auth.service.IUserService;
+import com.mkz.common.exceptions.BizIllegalException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+/**
+ * @Author: fsq
+ * @Date: 2025/5/20 13:41
+ * @Version: 1.0
+ */
+@Service
+@Slf4j
+@RequiredArgsConstructor
+public class UserServiceImpl  implements IUserService {
+
+    private final ICodeService codeService;
+    private final StudentClient studentClient;
+    private final UserClient userClient;
+
+    @Override
+    public void register(StudentFormDTO dto) {
+//        codeService.verifyCode(dto.getCellPhone(), dto.getCode());
+        //用户微服务都校验了
+        studentClient.registerStudent(dto);
+    }
+
+    @Override
+    public void updateMyPassword(StudentFormDTO dto) {
+        Long id = userClient.exchangeUserIdWithPhone(dto.getCellPhone());
+        if(id==null){
+            throw new BizIllegalException("手机号未注册");
+        }
+//        codeService.verifyCode(dto.getCellPhone(), dto.getCode());
+        studentClient.updateMyPassword(dto);
+    }
+}

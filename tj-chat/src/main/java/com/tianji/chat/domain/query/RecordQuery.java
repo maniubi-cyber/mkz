@@ -1,6 +1,6 @@
-package com.tianji.chat.domain.query;
+package com.mkz.chat.domain.query;
 
-import com.tianji.common.domain.query.PageQuery;
+import com.mkz.common.domain.query.PageQuery;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;

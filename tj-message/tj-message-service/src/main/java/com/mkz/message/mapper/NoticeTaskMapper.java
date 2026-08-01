@@ -1,0 +1,27 @@
+package com.mkz.message.mapper;
+
+import com.mkz.message.domain.po.NoticeTask;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import org.apache.ibatis.annotations.Insert;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+
+import java.util.List;
+
+/**
+ * <p>
+ * 系统通告的任务表，可以延期或定期发送通告 Mapper 接口
+ * </p>
+ *
+ * @author 虎哥
+ * @since 2022-08-20
+ */
+public interface NoticeTaskMapper extends BaseMapper<NoticeTask> {
+
+    @Select("SELECT target_id FROM notice_task_target WHERE task_id = #{task_id}")
+    List<Long> queryTaskTargetByTaskId(Long taskId);
+
+    void insertTaskTargetBatch(@Param("taskId")Long taskId,@Param("userIds") List<Long> userId);
+
+    void deleteTaskTargetBatch(@Param("taskId") Long taskId);
+}

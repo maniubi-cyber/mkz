@@ -1,2 +1,2 @@
-org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
-  com.tianji.authsdk.gateway.config.AuthAutoConfiguration
+﻿org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  com.mkz.authsdk.gateway.config.AuthAutoConfiguration

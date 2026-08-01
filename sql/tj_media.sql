@@ -1,7 +1,7 @@
 /*
  Navicat Premium Dump SQL
 
- Source Server         : tianji
+ Source Server         : mkz
  Source Server Type    : MySQL
  Source Server Version : 80029 (8.0.29)
  Source Host           : 192.168.150.101:3306
@@ -29,7 +29,7 @@ CREATE TABLE `file`  (
   `file_hash` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '文件内容哈希值（用于秒传）',
   `file_size` bigint NULL DEFAULT 0 COMMENT '文件大小（字节）',
   `file_type` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '文件类型/MIME类型',
-  `bucket_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT 'tianji' COMMENT '存储桶名称',
+  `bucket_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT 'mkz' COMMENT '存储桶名称',
   `use_times` int NULL DEFAULT 0 COMMENT '被引用次数',
   `status` tinyint NOT NULL COMMENT '状态：1-上传中 2-已上传 3-已处理',
   `platform` tinyint NULL DEFAULT 1 COMMENT '平台：1-腾讯，2-阿里 3-Minio',

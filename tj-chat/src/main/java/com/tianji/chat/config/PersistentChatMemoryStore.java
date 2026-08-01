@@ -1,17 +1,17 @@
-package com.tianji.chat.config;
+package com.mkz.chat.config;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.json.JSONUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import com.tianji.chat.domain.dto.PromptBuilder;
-import com.tianji.chat.domain.po.ChatSession;
-import com.tianji.chat.domain.po.UserSession;
-import com.tianji.chat.service.IChatSessionService;
-import com.tianji.chat.service.IUserSessionService;
-import com.tianji.chat.utils.DataDelayTaskHandler;
-import com.tianji.common.utils.UserContext;
+import com.mkz.chat.domain.dto.PromptBuilder;
+import com.mkz.chat.domain.po.ChatSession;
+import com.mkz.chat.domain.po.UserSession;
+import com.mkz.chat.service.IChatSessionService;
+import com.mkz.chat.service.IUserSessionService;
+import com.mkz.chat.utils.DataDelayTaskHandler;
+import com.mkz.common.utils.UserContext;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -30,7 +30,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import static com.tianji.chat.constants.RedisConstants.*;
+import static com.mkz.chat.constants.RedisConstants.*;
 import static dev.langchain4j.data.message.ChatMessageDeserializer.messagesFromJson;
 import static dev.langchain4j.data.message.ChatMessageSerializer.messageToJson;
 

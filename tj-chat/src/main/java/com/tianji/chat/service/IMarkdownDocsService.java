@@ -1,11 +1,11 @@
-package com.tianji.chat.service;
+package com.mkz.chat.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
-import com.tianji.chat.domain.po.MarkdownDocs;
-import com.tianji.chat.domain.vo.MarkdownChunk;
-import com.tianji.chat.domain.vo.MarkdownChunkVO;
-import com.tianji.common.domain.dto.PageDTO;
-import com.tianji.common.domain.query.PageQuery;
+import com.mkz.chat.domain.po.MarkdownDocs;
+import com.mkz.chat.domain.vo.MarkdownChunk;
+import com.mkz.chat.domain.vo.MarkdownChunkVO;
+import com.mkz.common.domain.dto.PageDTO;
+import com.mkz.common.domain.query.PageQuery;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;

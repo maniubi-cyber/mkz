@@ -1,8 +1,8 @@
-package com.tianji.chat.mapper;
+package com.mkz.chat.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.tianji.chat.domain.po.ChatSession;
-import com.tianji.chat.domain.po.UserSession;
+import com.mkz.chat.domain.po.ChatSession;
+import com.mkz.chat.domain.po.UserSession;
 
 /**
  * <p>

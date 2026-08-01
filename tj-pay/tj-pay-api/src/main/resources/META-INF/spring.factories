@@ -1,2 +1,2 @@
-org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
-  com.tianji.pay.sdk.config.PayApiImportConfiguration
+﻿org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  com.mkz.pay.sdk.config.PayApiImportConfiguration

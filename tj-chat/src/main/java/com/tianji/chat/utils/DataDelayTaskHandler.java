@@ -1,12 +1,12 @@
-package com.tianji.chat.utils;
+package com.mkz.chat.utils;
 
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
-import com.tianji.chat.domain.po.ChatSession;
-import com.tianji.chat.domain.po.UserSession;
-import com.tianji.chat.service.IChatSessionService;
-import com.tianji.chat.service.IUserSessionService;
+import com.mkz.chat.domain.po.ChatSession;
+import com.mkz.chat.domain.po.UserSession;
+import com.mkz.chat.service.IChatSessionService;
+import com.mkz.chat.service.IUserSessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RBlockingQueue;
@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-import static com.tianji.chat.constants.RedisConstants.*;
+import static com.mkz.chat.constants.RedisConstants.*;
 
 @Slf4j
 @Component

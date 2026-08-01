@@ -28,8 +28,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 
     <parent>
-        <artifactId>tjxt</artifactId>
-        <groupId>com.tianji</groupId>
+        <artifactId>mkz</artifactId>
+        <groupId>com.mkz</groupId>
         <version>1.0.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -43,7 +43,7 @@
     <dependencies>
         <!--api-->
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.mkz</groupId>
             <artifactId>tj-api</artifactId>
             <version>1.0.0</version>
 
@@ -125,9 +125,20 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
+        <!--openfeign：声明式调用 tj-ai-bridge 桥接服务-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+        <!--feign-form：支持 multipart 文件上传-->
+        <dependency>
+            <groupId>io.github.openfeign.form</groupId>
+            <artifactId>feign-form-spring</artifactId>
+            <version>3.8.0</version>
+        </dependency>
         <!--auth-sdk-->
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.mkz</groupId>
             <artifactId>tj-auth-resource-sdk</artifactId>
             <version>1.0.0</version>
         </dependency>

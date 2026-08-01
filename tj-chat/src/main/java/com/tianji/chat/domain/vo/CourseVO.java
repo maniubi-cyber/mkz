@@ -1,4 +1,4 @@
-package com.tianji.chat.domain.vo;
+package com.mkz.chat.domain.vo;
 
 import dev.langchain4j.model.output.structured.Description;
 import lombok.Data;

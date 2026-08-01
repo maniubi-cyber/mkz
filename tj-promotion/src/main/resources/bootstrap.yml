@@ -28,6 +28,8 @@ spring:
             refresh: false
           - data-id: shared-mq.yaml # 共享mq配置
             refresh: false
+          - data-id: shared-rocketmq.yaml # 共享rocketmq配置
+            refresh: false
           - data-id: shared-seata.yaml # 共享sentinel配置
             refresh: false
           - data-id: shared-sentinel.yaml # 共享sentinel配置
@@ -36,7 +38,7 @@ tj:
   swagger:
     enable: true
     enableResponseWrap: true
-    package-path: com.tianji.promotion.controller
+    package-path: com.mkz.promotion.controller
     title: 天机课堂 - 促销中心接口文档
     description: 该服务包含优惠促销有关的功能
     contact-name: 研究院

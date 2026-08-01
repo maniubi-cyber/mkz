@@ -30,15 +30,15 @@ export default defineConfig((mode) => {
       host: '0.0.0.0',
       proxy: {
         '/img-tx': {
-          // target:  'https://tjxt-dev.itheima.net/', // 'http://172.17.2.134',
-          target:  'http://www.tianji.com/',
+          // target:  'https://mkz-dev.itheima.net/', // 'http://172.17.2.134',
+          target:  'http://www.mkz.com/',
           changeOrigin: true,
           // rewrite: (path) => {
           //   return path.replace(/^\/img-tx/, '')
           // }
         },
         '/img-minio': {
-          // target:  'https://tjxt-dev.itheima.net/', // 'http://172.17.2.134',
+          // target:  'https://mkz-dev.itheima.net/', // 'http://172.17.2.134',
           target:  'http://192.168.150.101:9000/',
           changeOrigin: true,
           // rewrite: (path) => {
