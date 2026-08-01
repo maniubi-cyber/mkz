@@ -61,15 +61,15 @@ async def lifespan(app: FastAPI):
                 settings.EMBEDDING_DEVICE)
     logger.info("[AI Service] LLM         : %s @ %s",
                 settings.LLM_MODEL_NAME, settings.LLM_PROVIDER)
-    logger.info("[AI Service] Chroma      : persistent dir=%s",
-                settings.CHROMA_PERSIST_DIR)
+    logger.info("[AI Service] Qdrant      : %s:%d (gRPC prefer=%s)",
+                settings.QDRANT_HOST, settings.QDRANT_PORT, settings.QDRANT_PREFER_GRPC)
     logger.info("[AI Service] MinIO       : %s (bucket=%s)",
                 settings.MINIO_ENDPOINT, settings.MINIO_BUCKET)
     logger.info("=" * 60)
 
     # Initialize services (lazy, on first use)
     # - Embedding model will be loaded on first /ai/search or /ai/chat call
-    # - Chroma client will be connected on first vector operation
+    # - Qdrant client will be connected on first vector operation
     # - LLM client will be configured on first /ai/chat call
 
     yield

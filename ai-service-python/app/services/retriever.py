@@ -1,16 +1,19 @@
 """
-Hybrid Retriever
+Hybrid Retriever — ES BM25 + Qdrant 向量双路召回 → RRF 融合
 
-Combines vector semantic search (Chroma) with keyword search (BM25)
-via Reciprocal Rank Fusion (RRF), then applies permission filtering.
+针对单一检索路径的召回盲区设计双路召回:
+- 向量检索 (Qdrant): 擅长语义改写召回，但漏精确关键词
+- 关键词检索 (ES BM25 + IK 分词): 擅长精确关键词命中，但漏语义改写
+- RRF (Reciprocal Rank Fusion) 融合两路结果取 top-k
+- 叠加元数据权限过滤（在 Qdrant payload / ES filter 层完成）
 
 Pipeline::
 
     query
-      ├─→ Embedder.embed_query() → Chroma.query()        (vector results)
-      ├─→ BM25IndexManager.search()                       (keyword results)
-      ├─→ _rrf_fusion(vec_results, bm25_results, k=60)   (merged ranking)
-      └─→ _apply_permission_filter(merged, user, role)    (access control)
+      ├─→ Embedder.embed_query() → Qdrant.query()         (向量结果，命中子块)
+      ├─→ ESBM25Client.search()                           (ES BM25 关键词结果)
+      ├─→ _rrf_fusion(vec_results, bm25_results, k=60)   (融合排序)
+      └─→ _backtrace_parent(merged)                       (回溯父块提供完整上下文)
 """
 
 from __future__ import annotations
@@ -18,9 +21,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from app.services.bm25_index import BM25IndexManager, get_bm25_manager
-from app.services.chunker import Chunk
-from app.services.embedder import Embedder, get_embedder
+from app.core.config import settings
+from app.services.es_bm25 import ESBM25Client, get_es_bm25_client
 from app.services.vector_store import VectorStore, get_vector_store
 
 logger = logging.getLogger(__name__)
@@ -31,11 +33,12 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 class ScoredChunk:
-    """A single search result after fusion."""
+    """A single search result after fusion + parent backtrace."""
 
     __slots__ = (
         "chunk_id", "content", "score", "document_id", "document_name",
         "chunk_index", "kb_id", "owner_id", "visibility", "org_id",
+        "parent_id", "source",
     )
 
     def __init__(
@@ -50,6 +53,8 @@ class ScoredChunk:
         owner_id: int,
         visibility: str,
         org_id: int,
+        parent_id: str = "",
+        source: str = "parent",
     ) -> None:
         self.chunk_id = chunk_id
         self.content = content
@@ -61,6 +66,8 @@ class ScoredChunk:
         self.owner_id = owner_id
         self.visibility = visibility
         self.org_id = org_id
+        self.parent_id = parent_id
+        self.source = source
 
 
 # ============================================================
@@ -69,7 +76,7 @@ class ScoredChunk:
 
 class HybridRetriever:
     """
-    Hybrid retrieval combining vector + keyword search with RRF fusion.
+    双路召回: ES BM25 + Qdrant 向量 → RRF 融合 → 父块回溯。
 
     Usage::
 
@@ -85,13 +92,28 @@ class HybridRetriever:
 
     def __init__(
         self,
-        embedder: Embedder | None = None,
         vector_store: VectorStore | None = None,
-        bm25: BM25IndexManager | None = None,
+        es_bm25: ESBM25Client | None = None,
     ) -> None:
-        self._embedder = embedder or get_embedder()
         self._vector_store = vector_store or get_vector_store()
-        self._bm25 = bm25 or get_bm25_manager()
+        self._es_bm25 = es_bm25 or get_es_bm25_client()
+        self._embedder = None
+        self._parent_store = None
+
+    @property
+    def embedder(self):
+        if self._embedder is None:
+            from app.services.embedder import get_embedder
+            self._embedder = get_embedder()
+        return self._embedder
+
+    @property
+    def parent_store(self):
+        """懒加载父块存储（回溯用）。"""
+        if self._parent_store is None:
+            from app.services.langchain_rag_service import RedisParentChunkStore
+            self._parent_store = RedisParentChunkStore()
+        return self._parent_store
 
     # ---- Public API ----
 
@@ -111,7 +133,7 @@ class HybridRetriever:
 
         Args:
             kb_id:                Knowledge base ID.
-            query:                Search query text.
+            query:                Search query text (已过 LLM 改写).
             top_k:                Number of results to return.
             alpha:                0=pure BM25, 0.5=hybrid, 1=pure vector.
             similarity_threshold: Minimum RRF score to include.
@@ -120,95 +142,77 @@ class HybridRetriever:
             org_id:               User's org ID.
 
         Returns:
-            List of ScoredChunk sorted by relevance descending.
+            List of ScoredChunk (content 已回溯父块)，按相关度降序。
         """
-        # ---- 1. Vector search ----
+        # ---- 1. Qdrant 向量检索（命中子块，权限过滤在 payload 层）----
         vec_results: list[dict[str, Any]] = []
-        if alpha > 0.0:  # vector contributes
-            vec_results = self._vector_search(kb_id, query, top_k * 3)
+        if alpha > 0.0:
+            vec_results = self._vector_search(kb_id, query, top_k * 3, user_id, role, org_id)
 
-        # ---- 2. BM25 keyword search ----
-        bm25_results: list[tuple[Chunk, float]] = []
-        if alpha < 1.0:  # BM25 contributes
-            bm25_results = self._bm25_search(kb_id, query, top_k * 3)
+        # ---- 2. ES BM25 关键词检索（含权限过滤）----
+        bm25_results: list[dict[str, Any]] = []
+        if alpha < 1.0:
+            bm25_results = self._bm25_search(kb_id, query, top_k * 3, user_id, role, org_id)
 
-        # ---- 3. RRF fusion ----
+        # ---- 3. RRF 融合 ----
         fused = self._rrf_fusion(vec_results, bm25_results, alpha)
 
-        # ---- 4. Permission filter ----
-        filtered = self._apply_permission_filter(fused, user_id, role, org_id)
+        # ---- 4. 阈值 + top_k ----
+        results = [c for c in fused if c.score >= similarity_threshold][:top_k]
 
-        # ---- 5. Threshold + top_k ----
-        results = [
-            c for c in filtered if c.score >= similarity_threshold
-        ]
-        results = results[:top_k]
+        # ---- 5. 父块回溯（提供完整上下文）----
+        results = self._backtrace_parent(results)
 
         logger.info(
             "Hybrid search: kb_id=%d, query='%s', alpha=%.2f, "
-            "vec=%d, bm25=%d, fused=%d, filtered=%d, final=%d",
+            "vec=%d, es_bm25=%d, fused=%d, final=%d",
             kb_id, query[:40], alpha,
-            len(vec_results), len(bm25_results), len(fused),
-            len(filtered), len(results),
+            len(vec_results), len(bm25_results), len(fused), len(results),
         )
 
         return results
 
     # ============================================================
-    # Private — Search
+    # Private — Vector Search (Qdrant)
     # ============================================================
 
     def _vector_search(
         self, kb_id: int, query: str, top_k: int,
+        user_id: int, role: str, org_id: int,
     ) -> list[dict[str, Any]]:
-        """
-        Execute vector similarity search via Chroma.
-
-        Returns list of dicts with keys: id, content, distance, metadata.
-        Chroma COSINE returns similarity score (0~1), higher = more similar.
-        """
+        """Qdrant 向量检索（命中子块，权限过滤在 payload 层）。"""
         try:
-            q_vec = self._embedder.embed_query(query)
-            chroma_result = self._vector_store.query(
+            q_vec = self.embedder.embed_query(query).tolist()
+            return self._vector_store.query(
                 kb_id=kb_id,
-                query_embedding=q_vec.tolist(),
+                query_embedding=q_vec,
                 top_k=top_k,
+                user_id=user_id,
+                role=role,
+                org_id=org_id,
             )
         except Exception as e:
             logger.warning("Vector search failed: %s", e)
             return []
 
-        # Chroma returns nested lists (one per query)
-        ids = chroma_result.get("ids", [[]])[0]
-        documents = chroma_result.get("documents", [[]])[0]
-        metadatas = chroma_result.get("metadatas", [[]])[0]
-        distances = chroma_result.get("distances", [[]])[0]
-
-        results: list[dict[str, Any]] = []
-        for i in range(len(ids)):
-            # Chroma COSINE similarity: distance = 1 - score
-            distance = distances[i] if i < len(distances) else 1.0
-            similarity = max(0.0, min(1.0, 1.0 - distance))
-            meta = metadatas[i] if i < len(metadatas) else {}
-
-            results.append({
-                "id": ids[i],
-                "content": documents[i] if i < len(documents) else "",
-                "score": similarity,
-                "metadata": meta,
-            })
-
-        return results
+    # ============================================================
+    # Private — ES BM25 Search
+    # ============================================================
 
     def _bm25_search(
         self, kb_id: int, query: str, top_k: int,
-    ) -> list[tuple[Chunk, float]]:
-        """Execute BM25 keyword search."""
-        try:
-            return self._bm25.search(kb_id, query, top_k=top_k)
-        except Exception as e:
-            logger.warning("BM25 search failed: %s", e)
-            return []
+        user_id: int, role: str, org_id: int,
+    ) -> list[dict[str, Any]]:
+        """ES BM25 关键词检索（含 IK 分词 + 权限过滤）。"""
+        results = self._es_bm25.search(
+            kb_id=kb_id,
+            query=query,
+            top_k=top_k,
+            user_id=user_id,
+            role=role,
+            org_id=org_id,
+        )
+        return results
 
     # ============================================================
     # Private — RRF Fusion
@@ -217,24 +221,16 @@ class HybridRetriever:
     def _rrf_fusion(
         self,
         vec_results: list[dict[str, Any]],
-        bm25_results: list[tuple[Chunk, float]],
+        bm25_results: list[dict[str, Any]],
         alpha: float,
     ) -> list[ScoredChunk]:
         """
         Reciprocal Rank Fusion.
 
-        For each unique document, compute:
+        For each unique chunk, compute:
             score = alpha * vec_rrf + (1-alpha) * bm25_rrf
         where:
             rrf = 1 / (RRF_K + rank)
-
-        Args:
-            vec_results:  Vector search results (ranked).
-            bm25_results: BM25 keyword results (ranked).
-            alpha:        Weight: 0=pure BM25, 0.5=hybrid, 1=pure vector.
-
-        Returns:
-            List of ScoredChunk sorted by fused score descending.
         """
         from collections import defaultdict
 
@@ -249,39 +245,20 @@ class HybridRetriever:
             rrf_scores[chunk_id] += alpha * rrf
 
             if chunk_id not in chunk_map:
-                chunk_map[chunk_id] = ScoredChunk(
-                    chunk_id=chunk_id,
-                    content=item.get("content", ""),
-                    score=0.0,
-                    document_id=int(meta.get("document_id", 0)),
-                    document_name=str(meta.get("file_name", "")),
-                    chunk_index=int(meta.get("chunk_index", 0)),
-                    kb_id=int(meta.get("kb_id", 0)),
-                    owner_id=int(meta.get("owner_id", 0)),
-                    visibility=str(meta.get("visibility", "PRIVATE")),
-                    org_id=int(meta.get("org_id", 0)),
+                chunk_map[chunk_id] = self._build_scored_chunk(
+                    chunk_id, item, item.get("content", ""),
                 )
 
         # --- BM25 RRF ---
-        for rank, (chunk, bm25_score) in enumerate(bm25_results, start=1):
+        for rank, item in enumerate(bm25_results, start=1):
             rrf = 1.0 / (self.RRF_K + rank)
-            # Generate a stable chunk_id for BM25 results
-            # Since BM25 chunks don't have document IDs embedded, we use index
-            chunk_id = f"bm25_{chunk.index}"
+            chunk_id = item["id"]
+            meta = item.get("metadata", {})
             rrf_scores[chunk_id] += (1.0 - alpha) * rrf
 
             if chunk_id not in chunk_map:
-                chunk_map[chunk_id] = ScoredChunk(
-                    chunk_id=chunk_id,
-                    content=chunk.content,
-                    score=0.0,
-                    document_id=0,
-                    document_name="",
-                    chunk_index=chunk.index,
-                    kb_id=0,
-                    owner_id=0,
-                    visibility="PRIVATE",
-                    org_id=0,
+                chunk_map[chunk_id] = self._build_scored_chunk(
+                    chunk_id, item, item.get("content", ""),
                 )
 
         # --- Merge scores ---
@@ -294,52 +271,55 @@ class HybridRetriever:
         results.sort(key=lambda x: x.score, reverse=True)
         return results
 
+    def _build_scored_chunk(
+        self, chunk_id: str, item: dict[str, Any], content: str,
+    ) -> ScoredChunk:
+        """从检索结果构建 ScoredChunk。"""
+        meta = item.get("metadata", {})
+        return ScoredChunk(
+            chunk_id=chunk_id,
+            content=content,
+            score=0.0,
+            document_id=int(meta.get("document_id", 0)),
+            document_name=str(meta.get("file_name", "")),
+            chunk_index=int(meta.get("parent_index", meta.get("chunk_index", 0))),
+            kb_id=int(meta.get("kb_id", 0)),
+            owner_id=int(meta.get("owner_id", 0)),
+            visibility=str(meta.get("visibility", "PRIVATE")),
+            org_id=int(meta.get("org_id", 0)),
+            parent_id=str(meta.get("parent_id", "")),
+            source="child",
+        )
+
     # ============================================================
-    # Private — Permission Filter
+    # Private — Parent Backtrace（命中子块后回溯父块）
     # ============================================================
 
-    def _apply_permission_filter(
-        self,
-        chunks: list[ScoredChunk],
-        user_id: int,
-        role: str,
-        org_id: int,
-    ) -> list[ScoredChunk]:
+    def _backtrace_parent(self, chunks: list[ScoredChunk]) -> list[ScoredChunk]:
         """
-        Filter chunks by visibility permissions.
+        通过 parent_id 回溯 Redis 中的父块，提供完整段落上下文。
 
-        Rules:
-        - ADMIN → see all
-        - owner_id == user_id → allowed
-        - visibility == PUBLIC → allowed
-        - visibility == ORG AND org_id == user's org_id → allowed
-        - Otherwise → blocked
+        若父块缺失，退化使用子块内容。
         """
-        # Admin bypass
-        if role and role.upper() == "ADMIN":
+        parent_ids = [c.parent_id for c in chunks if c.parent_id]
+        if not parent_ids:
             return chunks
 
-        filtered: list[ScoredChunk] = []
+        try:
+            parents = self.parent_store.get_parent_chunks_by_ids(parent_ids)
+            parent_map = {p.id: p for p in parents}
+        except Exception as e:
+            logger.warning("Parent backtrace failed: %s", e)
+            return chunks
+
         for c in chunks:
-            if self._has_permission(c, user_id, org_id):
-                filtered.append(c)
+            parent = parent_map.get(c.parent_id)
+            if parent:
+                c.content = parent.content
+                c.source = "parent"
+                c.chunk_index = parent.index
 
-        return filtered
-
-    def _has_permission(
-        self, chunk: ScoredChunk, user_id: int, org_id: int,
-    ) -> bool:
-        """Check whether a user can access this chunk."""
-        # Owner
-        if user_id != 0 and chunk.owner_id == user_id:
-            return True
-        # Public
-        if chunk.visibility == "PUBLIC":
-            return True
-        # Org
-        if chunk.visibility == "ORG" and chunk.org_id != 0 and chunk.org_id == org_id:
-            return True
-        return False
+        return chunks
 
 
 # ============================================================

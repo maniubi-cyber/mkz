@@ -2,7 +2,7 @@
 Tests for HybridRetriever — RRF fusion + permission filtering.
 
 These tests verify the algorithm logic without requiring actual
-Chroma / Embedder / BM25 infrastructure.
+Qdrant / Embedder / BM25 infrastructure.
 
 Run::
 
@@ -50,7 +50,7 @@ def _vec_result(chunk_id: str, content: str, similarity: float,
                 document_id: int = 1, document_name: str = "doc.pdf",
                 owner_id: int = 10, visibility: str = "PRIVATE",
                 org_id: int = 5) -> dict:
-    """Build a synthetic vector result dict matching Chroma output."""
+    """Build a synthetic vector result dict matching Qdrant output."""
     return {
         "id": chunk_id,
         "content": content,

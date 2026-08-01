@@ -57,7 +57,7 @@ venv/
 # ===========================
 # Data
 # ===========================
-chroma_data/
+qdrant_data/
 *.db
 uploads/
 

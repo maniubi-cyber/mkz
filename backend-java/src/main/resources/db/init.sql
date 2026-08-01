@@ -1,6 +1,6 @@
 -- =============================================
 -- 知识库文档协作平台 - 数据库初始化脚本
--- 技术栈: Spring Cloud Alibaba + Spring Boot + Elasticsearch + Redis + FastAPI + LangChain + MySQL + Chroma
+-- 技术栈: Spring Boot + Elasticsearch + Redis + FastAPI + LangChain + MySQL + Qdrant + MinIO
 -- 功能: 类语雀风格文档协作平台 + RAG 智能问答
 -- Engine: InnoDB, Charset: utf8mb4
 -- =============================================
@@ -121,7 +121,7 @@ CREATE TABLE `document_chunk` (
     `parent_chunk_id` BIGINT     DEFAULT NULL             COMMENT '父切块ID（用于层级关系）',
     `chunk_type`    VARCHAR(20)  DEFAULT 'PARENT'         COMMENT '切块类型：PARENT(父块) / CHILD(子块)',
     `token_count`   INT          DEFAULT 0                COMMENT '估算 token 数',
-    `vector_id`     VARCHAR(100) DEFAULT NULL             COMMENT '向量库中的唯一 ID（Chroma）',
+    `vector_id`     VARCHAR(100) DEFAULT NULL             COMMENT '向量库中的唯一 ID（Qdrant point id）',
     `owner_id`      BIGINT       NOT NULL                 COMMENT '文档上传用户 ID（冗余，权限过滤用）',
     `visibility`    VARCHAR(20)  NOT NULL                 COMMENT '权限范围（冗余，权限过滤用）',
     `org_id`        BIGINT       DEFAULT NULL             COMMENT '组织 ID（冗余，权限过滤用）',

@@ -18,8 +18,8 @@ import java.util.Map;
  *
  * <p>异步调用 Python AI 服务进行文档处理：
  * <ul>
- *   <li>/api/parse — 文档解析（文本提取 → 切片 → 向量化 → 写入向量库 + document_chunk 表）</li>
- *   <li>/api/vectors/delete — 删除指定文档的向量</li>
+ *   <li>/ai/documents/parse — 文档解析（父子切块 → LLM 元数据 → Qdrant + Redis + ES BM25）</li>
+ *   <li>/ai/documents/vectors/delete — 删除文档索引（Qdrant + Redis + ES BM25）</li>
  * </ul>
  *
  * <h3>parse_status 状态机</h3>
@@ -29,8 +29,8 @@ import java.util.Map;
  * </pre>
  *
  * <h3>调用方式</h3>
- * 使用 OpenFeign 声明式调用 Python AI 服务，替代传统 RestTemplate，
- * 支持 Nacos 服务发现和负载均衡。
+ * 
+ * 通过 RestTemplate 调用 Python AI 服务，完成 RAG 文档解析与向量删除。
  *
  * @author knowledge-rag团队
  */
@@ -103,7 +103,7 @@ public class DocumentParseService {
     /**
      * 异步删除向量库中指定文档的所有向量
      *
-     * <p>调用 Python AI 服务 DELETE /api/vectors/delete?doc_id=xxx&kb_id=xxx</p>
+     * <p>调用 Python AI 服务 POST /ai/documents/vectors/delete</p>
      *
      * @param docId 文档 ID
      * @param kbId  知识库 ID
@@ -137,7 +137,7 @@ public class DocumentParseService {
     // ==================== 私有方法 ====================
 
     /**
-     * 调用 Python AI 解析服务（使用 OpenFeign）
+     * 调用 Python AI 解析服务（使用 RestTemplate）
      *
      * <p>POST /api/parse
      * Body: { doc_id, minio_path, file_type, kb_id }
@@ -148,7 +148,7 @@ public class DocumentParseService {
      *   <li>文本提取（PDF/DOCX/XLSX/TXT/MD）</li>
      *   <li>文本切片（按段落/句子 + 重叠窗口）</li>
      *   <li>向量化（调用 Embedding 模型）</li>
-     *   <li>写入向量库（Chroma）</li>
+     *   <li>子块 embedding 写入 Qdrant + 父块入 Redis + ES BM25</li>
      *   <li>写入 document_chunk 表（MySQL）</li>
      *   <li>回写 chunk_count 到 document 表</li>
      * </ol>
@@ -164,7 +164,7 @@ public class DocumentParseService {
         log.debug("调用 AI 解析服务: body={}", requestBody);
 
         try {
-            // 使用 Feign 声明式调用
+            // 使用 RestTemplate 调用
             Map<String, Object> response = aiServiceClient.parseDocument(requestBody);
             log.info("AI 解析服务响应: {}", response);
 

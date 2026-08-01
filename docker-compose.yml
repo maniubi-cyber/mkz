@@ -1,6 +1,6 @@
 # ============================================================
 # 知识库文档协作平台 - Docker Compose 配置
-# 技术栈: Spring Cloud Alibaba + Spring Boot + Elasticsearch + Redis + FastAPI + LangChain + MySQL + Chroma
+# 技术栈: Spring Boot + Elasticsearch + Redis + FastAPI + LangChain + Qdrant + MySQL + MinIO
 # ============================================================
 #
 # 启动所有服务:
@@ -12,9 +12,7 @@
 #   - minio: 文件对象存储
 #   - elasticsearch: 全文检索 (IK中文分词)
 #   - kibana: ES 可视化管理
-#   - chroma: 向量数据库（嵌入式，Python AI Service 内部管理）
-#   - nacos: 服务注册发现 + 配置中心
-#   - sentinel: 熔断限流控制台
+#   - qdrant: 向量数据库（子块 embedding 检索入口）
 #   - ai-service: Python FastAPI 服务 (LangChain RAG)
 #   - backend-java: Spring Boot Java 服务
 
@@ -137,57 +135,25 @@ services:
     networks:
       - rag-network
 
-  # ==================== Chroma 向量数据库（嵌入式，Python 服务内部管理） ====================
-  # Chroma 是嵌入式向量数据库，无需独立容器。
-  # 持久化目录通过 volume ai_service_data 挂载到 Python AI Service。
-
-  # ==================== Nacos (服务注册发现 + 配置中心) ====================
-  nacos:
-    image: nacos/nacos-server:v2.3.2
-    container_name: rag-nacos
+  # ==================== Qdrant 向量数据库（子块 embedding 检索入口） ====================
+  qdrant:
+    image: qdrant/qdrant:v1.9.0
+    container_name: rag-qdrant
     restart: unless-stopped
     ports:
-      - "8848:8848"
-      - "9848:9848"
-      - "9849:9849"
+      - "6333:6333"
+      - "6334:6334"
     environment:
-      - MODE=standalone
-      - JVM_XMS=512m
-      - JVM_XMX=512m
+      - QDRANT__LOG_LEVEL=INFO
       - TZ=Asia/Shanghai
-      - SPRING_DATASOURCE_PLATFORM=mysql
-      - MYSQL_SERVICE_HOST=rag-mysql
-      - MYSQL_SERVICE_PORT=3306
-      - MYSQL_SERVICE_DB_NAME=nacos_config
-      - MYSQL_SERVICE_USER=root
-      - MYSQL_SERVICE_PASSWORD=js2003
-    depends_on:
-      mysql:
-        condition: service_healthy
+    volumes:
+      - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 60s
-    networks:
-      - rag-network
-
-  # ==================== Sentinel (熔断限流控制台) ====================
-  sentinel:
-    image: bladex/sentinel-dashboard:1.8.6
-    container_name: rag-sentinel
-    restart: unless-stopped
-    ports:
-      - "8081:8080"
-    environment:
-      - JAVA_OPTS=-Dserver.port=8080 -Dcsp.sentinel.dashboard.server=localhost:8080 -Dproject.name=sentinel-dashboard -Xms256m -Xmx256m
-      - TZ=Asia/Shanghai
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     networks:
       - rag-network
 
@@ -228,6 +194,14 @@ services:
       # Embedding
       - EMBEDDING_MODEL_NAME=BAAI/bge-large-zh-v1.5
       - EMBEDDING_DEVICE=cpu
+      # Qdrant 向量数据库
+      - QDRANT_HOST=rag-qdrant
+      - QDRANT_PORT=6333
+      - QDRANT_GRPC_PORT=6334
+      - QDRANT_PREFER_GRPC=true
+      # Elasticsearch (BM25 双路召回 + IK 中文分词)
+      - ES_URIS=http://rag-elasticsearch:9200
+      - ES_BM25_ENABLED=true
     volumes:
       - ai_service_data:/app/data
     depends_on:
@@ -235,11 +209,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
     networks:
       - rag-network
 
   # ==================== Java Backend Service (Spring Boot) ====================
-  # 注意: Java 侧不使用 langchain4j，AI/RAG 业务全部由 Python 侧实现
+  # 注意: Java 侧 AI/RAG 业务全部由 Python 侧实现
   # Java 通过 HTTP REST API 调用 Python AI 服务
   backend-java:
     build:
@@ -266,12 +244,6 @@ services:
       - ES_URIS=http://rag-elasticsearch:9200
       - ES_USERNAME=
       - ES_PASSWORD=
-      # Nacos
-      - NACOS_SERVER=rag-nacos:8848
-      - NACOS_NAMESPACE=public
-      - NACOS_GROUP=DEFAULT_GROUP
-      # Sentinel
-      - SENTINEL_DASHBOARD=rag-sentinel:8080
       # MinIO
       - MINIO_ENDPOINT=http://rag-minio:9000
       - MINIO_ACCESS_KEY=minioadmin
@@ -290,8 +262,6 @@ services:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
-      nacos:
-        condition: service_healthy
       ai-service:
         condition: service_started
     networks:
@@ -302,6 +272,7 @@ volumes:
   redis_data:
   minio_data:
   es_data:
+  qdrant_data:
   ai_service_data:
 
 networks:

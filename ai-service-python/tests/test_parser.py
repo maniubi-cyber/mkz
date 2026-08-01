@@ -64,7 +64,7 @@ def sample_pdf_bytes() -> bytes:
     pdf.set_font("Helvetica", "B", size=14)
     pdf.cell(0, 10, "Chapter 2: Technical Architecture", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_font("Helvetica", size=11)
-    pdf.multi_cell(0, 8, "Backend: Spring Boot + MyBatis-Plus. AI Service: FastAPI + Chroma.")
+    pdf.multi_cell(0, 8, "Backend: Spring Boot + MyBatis-Plus. AI Service: FastAPI + Qdrant.")
 
     # Page 3 — empty (will be filtered)
     pdf.add_page()
@@ -171,7 +171,7 @@ def sample_md_bytes() -> bytes:
         "## 架构设计\n\n"
         "系统采用**微服务架构**，主要包含以下模块：\n\n"
         "- **Java 后端**: Spring Boot + MyBatis-Plus\n"
-        "- **Python AI 服务**: FastAPI + Chroma\n"
+        "- **Python AI 服务**: FastAPI + Qdrant\n"
         "- **存储层**: MySQL + MinIO + Redis\n\n"
         "```python\n"
         "print('Hello, RAG!')\n"

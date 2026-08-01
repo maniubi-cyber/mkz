@@ -1,57 +1,66 @@
 """
-Chroma Vector Store Service
+Qdrant Vector Store Service
 
-使用 Chroma 作为向量数据库，存储文档父切块的 embedding。
+使用 Qdrant 作为向量数据库，存储**子切块**的 embedding 作为检索入口。
+命中后通过 parent_id 回溯到父切块（存于 Redis）以提供完整上下文。
 
-Chroma 优势:
-- 嵌入式向量数据库，无需独立服务部署
-- 支持持久化存储到磁盘
-- 内置 HNSW 索引，搜索效率高
-- REST API + Python SDK 双协议
-- 适合中小规模知识库（万~百万级向量）
+父子切块策略:
+- 子切块 (句子级, ~200 字符) → embedding → Qdrant（检索入口，高召回）
+- 父切块 (段落级, ~1000 字符) → Redis（回溯提供完整上下文）
+- LLM 自动提取元数据 → Qdrant payload（支持元数据权限过滤）
+
+Qdrant 优势:
+- 生产级向量数据库，独立服务部署，支持水平扩展
+- HNSW 索引 + payload 过滤，支持元数据权限过滤
+- gRPC/REST 双协议，gRPC 吞吐更高
 
 Collection 命名: kb_{kb_id}
-距离度量: cosine（默认，适合归一化向量）
+距离度量: Cosine（默认，适合归一化向量）
 
-每个文档的 metadata:
-    document_id   (int)    — 源文档主键
-    kb_id         (int)    — 知识库主键
-    file_name     (str)    — 原始文件名
-    chunk_index   (int)    — 文档内切片序号（从 0 开始）
-    owner_id      (int)    — 上传者用户 ID
-    visibility    (str)    — PRIVATE | PUBLIC | ORG
-    org_id        (int)    — 组织 ID（0 表示不适用）
+每个子切块的 payload:
+    document_id    (int)    — 源文档主键
+    kb_id          (int)    — 知识库主键
+    parent_id      (str)    — 所属父切块 ID（回溯父块用）
+    parent_index   (int)    — 父切块在文档内的序号
+    chunk_index    (int)    — 子切块在父块内的序号
+    file_name      (str)    — 原始文件名
+    owner_id       (int)    — 上传者用户 ID
+    visibility     (str)    — PRIVATE | PUBLIC | ORG
+    org_id         (int)    — 组织 ID（0 表示不适用）
+    doc_version    (int)    — 文档版本号（用于增量重建定位）
+    topic          (str)    — LLM 提取的主题
+    keywords       (str)    — LLM 提取的关键词（逗号分隔）
 """
 
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any, Optional
 
 from app.core.config import settings
-from app.services.chunker import Chunk
 
 logger = logging.getLogger(__name__)
 
 
 class VectorStore:
     """
-    Chroma 向量存储封装类。
+    Qdrant 向量存储封装类。
 
     Usage::
 
         store = VectorStore.get_instance()
-        store.add_chunks_full(kb_id=1, document_id=42, chunks=chunks, ...)
+        store.add_child_chunks(kb_id=1, document_id=42, chunks=child_chunks, ...)
         store.delete_by_document_id(kb_id=1, doc_id=42)
+        store.query(kb_id=1, query_embedding=vec, top_k=5, filter=...)
     """
 
     _instance: Optional["VectorStore"] = None
 
     def __init__(self) -> None:
         self._client = None
-        self._collection_prefix = settings.CHROMA_COLLECTION_PREFIX
+        self._collection_prefix = settings.QDRANT_COLLECTION_PREFIX
         self._dimension = settings.EMBEDDING_DIMENSION
-        self._persist_dir = settings.CHROMA_PERSIST_DIR
 
     # ---- Singleton ----
 
@@ -70,217 +79,372 @@ class VectorStore:
     # ---- Internal: Client Lazy-Load ----
 
     def _get_client(self):
-        """获取 Chroma 客户端（懒加载）。"""
+        """获取 Qdrant 客户端（懒加载，优先 gRPC）。"""
         if self._client is None:
-            import chromadb
-            self._client = chromadb.PersistentClient(
-                path=self._persist_dir,
-            )
+            from qdrant_client import QdrantClient
+
+            kwargs: dict[str, Any] = {
+                "host": settings.QDRANT_HOST,
+                "port": settings.QDRANT_PORT,
+                "grpc_port": settings.QDRANT_GRPC_PORT,
+                "prefer_grpc": settings.QDRANT_PREFER_GRPC,
+            }
+            if settings.QDRANT_API_KEY:
+                kwargs["api_key"] = settings.QDRANT_API_KEY
+
+            self._client = QdrantClient(**kwargs)
             logger.info(
-                "Chroma 客户端初始化完成: path=%s",
-                self._persist_dir,
+                "Qdrant 客户端初始化完成: host=%s, port=%d, grpc=%s",
+                settings.QDRANT_HOST, settings.QDRANT_PORT,
+                settings.QDRANT_PREFER_GRPC,
             )
         return self._client
+
+    # ---- Internal: Distance Mapping ----
+
+    def _distance_str(self) -> str:
+        """Map config distance to Qdrant Distance enum string."""
+        from qdrant_client.models import Distance
+        mapping = {
+            "cosine": Distance.COSINE,
+            "euclid": Distance.EUCLID,
+            "dot": Distance.DOT,
+        }
+        return mapping.get(settings.QDRANT_DISTANCE.lower(), Distance.COSINE)
 
     # ---- Collection Management ----
 
     def _ensure_collection_exists(self, collection_name: str):
-        """确保 collection 存在，不存在则创建。"""
+        """确保 collection 存在，不存在则创建（含 HNSW + payload 索引）。"""
+        from qdrant_client.models import (
+            VectorParams,
+            HnswConfigDiff,
+            PayloadSchemaType,
+        )
+
         client = self._get_client()
-        try:
-            return client.get_collection(name=collection_name)
-        except Exception:
-            # Collection 不存在，创建
-            import chromadb
-            return client.create_collection(
-                name=collection_name,
-                metadata={
-                    "hnsw:space": "cosine",
-                    "hnsw:M": 16,
-                    "hnsw:C_m": 2,
-                },
-            )
+        collections = {c.name for c in client.get_collections().collections}
+        if collection_name in collections:
+            return
 
-    # ---- Public API ----
+        client.create_collection(
+            collection_name=collection_name,
+            vectors_config=VectorParams(
+                size=self._dimension,
+                distance=self._distance_str(),
+            ),
+            hnsw_config=HnswConfigDiff(
+                m=16,
+                ef_construct=100,
+                full_scan_threshold=10000,
+            ),
+        )
 
-    def add_chunks_full(
+        # 为权限过滤字段建立 payload 索引（加速过滤）
+        for field, ftype in [
+            ("document_id", PayloadSchemaType.INTEGER),
+            ("owner_id", PayloadSchemaType.INTEGER),
+            ("visibility", PayloadSchemaType.KEYWORD),
+            ("org_id", PayloadSchemaType.INTEGER),
+            ("parent_id", PayloadSchemaType.KEYWORD),
+            ("doc_version", PayloadSchemaType.INTEGER),
+        ]:
+            try:
+                client.create_payload_index(
+                    collection_name=collection_name,
+                    field_name=field,
+                    field_schema=ftype,
+                )
+            except Exception as e:
+                logger.debug("payload index 创建跳过 %s: %s", field, e)
+
+        logger.info("Qdrant collection 创建: %s", collection_name)
+
+    # ---- Public API: 写入子切块 ----
+
+    def add_child_chunks(
         self,
         kb_id: int,
         document_id: int,
-        chunks: list[Chunk],
+        child_chunks: list[Any],
         file_name: str,
         owner_id: int,
         visibility: str,
         org_id: int,
+        doc_version: int = 1,
+        metadata_list: Optional[list[dict]] = None,
     ) -> int:
         """
-        将切块向量化后插入到 Chroma collection 中。
+        将子切块向量化后插入到 Qdrant collection 中。
 
         Args:
-            kb_id:       知识库 ID
-            document_id: 文档主键
-            chunks:      切块对象列表（包含 content 和 index）
-            file_name:   原始文件名
-            owner_id:    上传者用户 ID
-            visibility:  权限范围 (PRIVATE/PUBLIC/ORG)
-            org_id:      组织 ID
+            kb_id:          知识库 ID
+            document_id:    文档主键
+            child_chunks:   子切块对象列表（需含 content / parent_id / parent_index / index）
+            file_name:      原始文件名
+            owner_id:       上传者用户 ID
+            visibility:     权限范围 (PRIVATE/PUBLIC/ORG)
+            org_id:         组织 ID
+            doc_version:    文档版本号（用于增量重建定位）
+            metadata_list:  LLM 提取的元数据列表（topic/keywords），与 child_chunks 等长
 
         Returns:
-            插入的切块数量
+            插入的子切块数量
         """
-        if not chunks:
+        if not child_chunks:
             return 0
 
         collection_name = self._get_collection_name(kb_id)
-        collection = self._ensure_collection_exists(collection_name)
+        self._ensure_collection_exists(collection_name)
 
         from app.services.embedder import get_embedder
+        from qdrant_client.models import PointStruct
 
         embedder = get_embedder()
 
         # 批量 embedding
-        texts = [c.content for c in chunks]
+        texts = [c.content for c in child_chunks]
         vectors = [vec.tolist() for vec in embedder.embed(texts)]
 
-        # 构建 ID 列表和 metadata
-        ids = []
-        metadatas = []
-        documents = []
+        points: list[PointStruct] = []
+        for i, chunk in enumerate(child_chunks):
+            point_id = self._make_point_id(document_id, chunk)
+            extra_meta = metadata_list[i] if metadata_list and i < len(metadata_list) else {}
 
-        for chunk in chunks:
-            chunk_id = f"doc_{document_id}_chunk_{chunk.index}"
-            ids.append(chunk_id)
-            metadatas.append({
+            payload = {
+                "content": chunk.content,
                 "document_id": document_id,
                 "kb_id": kb_id,
-                "file_name": file_name,
+                "parent_id": chunk.parent_id,
+                "parent_index": chunk.parent_index,
                 "chunk_index": chunk.index,
+                "file_name": file_name,
                 "owner_id": owner_id,
                 "visibility": visibility,
                 "org_id": org_id if org_id else 0,
-            })
-            documents.append(chunk.content)
+                "doc_version": doc_version,
+                "topic": extra_meta.get("topic", ""),
+                "keywords": extra_meta.get("keywords", ""),
+            }
+            points.append(PointStruct(id=point_id, vector=vectors[i], payload=payload))
 
-        # 批量 upsert（Chroma 按 id 自动去重）
-        collection.upsert(
-            ids=ids,
-            embeddings=vectors,
-            metadatas=metadatas,
-            documents=documents,
-        )
+        # 分批 upsert（Qdrant 单次建议 <= 256）
+        client = self._get_client()
+        batch_size = 256
+        for start in range(0, len(points), batch_size):
+            client.upsert(
+                collection_name=collection_name,
+                points=points[start:start + batch_size],
+                wait=True,
+            )
 
         logger.info(
-            "向 Chroma 插入完成: kb_id={}, doc_id={}, count={}",
-            kb_id, document_id, len(chunks),
+            "Qdrant 子块写入完成: kb_id={}, doc_id={}, version={}, count={}",
+            kb_id, document_id, doc_version, len(child_chunks),
         )
-        return len(chunks)
+        return len(child_chunks)
+
+    def _make_point_id(self, document_id: int, chunk: Any) -> str:
+        """生成稳定的子切块 point ID（基于文档ID+父块序号+子块序号）。"""
+        return f"doc_{document_id}_p{chunk.parent_index}_c{chunk.index}"
+
+    # ---- Public API: 删除 ----
 
     def delete_by_document_id(self, kb_id: int, document_id: int) -> int:
         """
-        删除指定文档的所有切块向量。
-
-        Args:
-            kb_id:       知识库 ID
-            document_id: 文档主键
+        删除指定文档的所有子块向量。
 
         Returns:
-            删除的记录数
+            删除的记录数（Qdrant 不直接返回数量，这里通过 filter 删除并估算）。
         """
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+
         collection_name = self._get_collection_name(kb_id)
-        collection = self._ensure_collection_exists(collection_name)
+        self._ensure_collection_exists(collection_name)
 
-        # 查询该文档的所有向量
+        client = self._get_client()
+        # 先统计数量
         try:
-            result = collection.get(
-                where={"document_id": document_id},
-                include=["metadatas"],
+            count_resp = client.count(
+                collection_name=collection_name,
+                count_filter=Filter(must=[
+                    FieldCondition(key="document_id", match=MatchValue(value=document_id))
+                ]),
+                exact=True,
             )
-            ids_to_delete = result["ids"] if result and "ids" in result else []
+            deleted = count_resp.count
+        except Exception:
+            deleted = -1
 
-            if ids_to_delete:
-                collection.delete(ids=ids_to_delete)
-                logger.info(
-                    "Chroma 删除完成: kb_id={}, doc_id={}, deleted={}",
-                    kb_id, document_id, len(ids_to_delete),
-                )
-            return len(ids_to_delete)
-        except Exception as e:
-            logger.error("Chroma 删除失败: kb_id={}, doc_id={}, error={}",
-                         kb_id, document_id, e)
-            return 0
+        client.delete(
+            collection_name=collection_name,
+            points_selector=Filter(must=[
+                FieldCondition(key="document_id", match=MatchValue(value=document_id))
+            ]),
+            wait=True,
+        )
+
+        logger.info(
+            "Qdrant 删除完成: kb_id={}, doc_id={}, deleted={}",
+            kb_id, document_id, deleted,
+        )
+        return max(deleted, 0)
+
+    def delete_by_version(self, kb_id: int, document_id: int, old_version: int) -> int:
+        """
+        按版本号删除（增量重建场景：删除旧版本的子块）。
+        """
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+        collection_name = self._get_collection_name(kb_id)
+        self._ensure_collection_exists(collection_name)
+
+        client = self._get_client()
+        delete_filter = Filter(must=[
+            FieldCondition(key="document_id", match=MatchValue(value=document_id)),
+            FieldCondition(key="doc_version", match=MatchValue(value=old_version)),
+        ])
+
+        try:
+            count_resp = client.count(
+                collection_name=collection_name,
+                count_filter=delete_filter,
+                exact=True,
+            )
+            deleted = count_resp.count
+        except Exception:
+            deleted = -1
+
+        client.delete(
+            collection_name=collection_name,
+            points_selector=delete_filter,
+            wait=True,
+        )
+
+        logger.info(
+            "Qdrant 版本删除完成: kb_id={}, doc_id={}, old_version={}, deleted={}",
+            kb_id, document_id, old_version, deleted,
+        )
+        return max(deleted, 0)
+
+    # ---- Public API: 统计 ----
 
     def count(self, kb_id: int) -> int:
         """返回 collection 中的向量数量。"""
         collection_name = self._get_collection_name(kb_id)
         try:
-            collection = self._ensure_collection_exists(collection_name)
-            return collection.count()
+            client = self._get_client()
+            self._ensure_collection_exists(collection_name)
+            return client.count(collection_name=collection_name, exact=True).count
         except Exception:
             return 0
+
+    # ---- Public API: 向量检索 ----
 
     def query(
         self,
         kb_id: int,
         query_embedding: list[float],
         top_k: int = 5,
-    ) -> dict[str, Any]:
+        user_id: int = 0,
+        role: str = "USER",
+        org_id: int = 0,
+    ) -> list[dict[str, Any]]:
         """
-        向量相似度搜索。
+        向量相似度搜索（含元数据权限过滤）。
+
+        权限规则（在 Qdrant payload 过滤层完成）:
+        - ADMIN → 不过滤
+        - owner_id == user_id → 命中
+        - visibility == PUBLIC → 命中
+        - visibility == ORG AND org_id == user's org_id → 命中
 
         Args:
             kb_id:           知识库 ID
             query_embedding: 查询向量
             top_k:           返回结果数量
+            user_id:         当前用户 ID（0 = 匿名）
+            role:            USER / ADMIN
+            org_id:          用户组织 ID
 
         Returns:
-            搜索结果字典（与检索器兼容的统一格式）
+            统一格式结果列表: [{id, content, score, metadata}, ...]
         """
-        collection_name = self._get_collection_name(kb_id)
-        collection = self._ensure_collection_exists(collection_name)
-
-        results = collection.query(
-            query_embeddings=[query_embedding],
-            n_results=top_k,
-            include=["metadatas", "documents", "distances"],
+        from qdrant_client.models import (
+            Filter, FieldCondition, MatchValue, MatchAny, Range,
         )
 
-        # 转换为与检索器兼容的统一格式
-        # Chroma 返回 cosine 距离 = 1 - similarity
-        formatted_results = {
-            "ids": [[]],
-            "documents": [[]],
-            "distances": [[]],
-            "metadatas": [[]],
-        }
+        collection_name = self._get_collection_name(kb_id)
+        self._ensure_collection_exists(collection_name)
+        client = self._get_client()
 
-        if results and results["ids"] and results["ids"][0]:
-            ids = results["ids"][0]
-            docs = results.get("documents", [[]])[0]
-            dists = results.get("distances", [[]])[0]
-            metas = results.get("metadatas", [[]])[0]
+        # 构建权限过滤条件
+        query_filter = self._build_permission_filter(user_id, role, org_id)
 
-            for i in range(len(ids)):
-                distance = dists[i] if i < len(dists) else 1.0
-                formatted_results["ids"][0].append(ids[i])
-                formatted_results["documents"][0].append(docs[i] if i < len(docs) else "")
-                # Chroma cosine distance (0~1, smaller = more similar)
-                formatted_results["distances"][0].append(distance)
-                formatted_results["metadatas"][0].append(
-                    metas[i] if i < len(metas) else {}
-                )
+        results = client.search(
+            collection_name=collection_name,
+            query_vector=query_embedding,
+            limit=top_k,
+            query_filter=query_filter,
+            with_payload=True,
+        )
 
-        return formatted_results
+        formatted: list[dict[str, Any]] = []
+        for hit in results:
+            payload = hit.payload or {}
+            formatted.append({
+                "id": str(hit.id),
+                "content": payload.get("content", ""),
+                "score": float(hit.score),
+                "metadata": payload,
+            })
+
+        return formatted
+
+    def _build_permission_filter(self, user_id: int, role: str, org_id: int):
+        """
+        构建 Qdrant 权限过滤 Filter。
+
+        逻辑（should = OR，满足任一即命中）:
+        - ADMIN → 返回 None（不过滤）
+        - owner_id == user_id  OR  visibility == PUBLIC
+          OR  (visibility == ORG AND org_id == user_org_id)
+        """
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+        if role and role.upper() == "ADMIN":
+            return None
+
+        should: list[Filter] = []
+
+        # owner 命中
+        if user_id != 0:
+            should.append(Filter(must=[
+                FieldCondition(key="owner_id", match=MatchValue(value=user_id))
+            ]))
+        # PUBLIC
+        should.append(Filter(must=[
+            FieldCondition(key="visibility", match=MatchValue(value="PUBLIC"))
+        ]))
+        # ORG 同组织
+        if org_id != 0:
+            should.append(Filter(must=[
+                FieldCondition(key="visibility", match=MatchValue(value="ORG")),
+                FieldCondition(key="org_id", match=MatchValue(value=org_id)),
+            ]))
+
+        return Filter(should=should)
 
     def delete_collection(self, kb_id: int) -> bool:
         """删除指定知识库的整个 collection。"""
         client = self._get_client()
         collection_name = self._get_collection_name(kb_id)
         try:
-            client.delete_collection(name=collection_name)
-            logger.info("Chroma collection 已删除: {}", collection_name)
+            client.delete_collection(collection_name=collection_name)
+            logger.info("Qdrant collection 已删除: {}", collection_name)
             return True
         except Exception as e:
-            logger.warning("Chroma collection 删除失败: {}, error={}",
+            logger.warning("Qdrant collection 删除失败: {}, error={}",
                            collection_name, e)
             return False
 

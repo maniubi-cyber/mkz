@@ -6,7 +6,7 @@ embedding with L2 normalization.
 
 After normalization:
     cosine_similarity(a, b) = dot(a, b)
-This is Chroma's expected format for COSINE similarity search.
+This is the expected format for COSINE similarity search (Qdrant).
 """
 
 from __future__ import annotations

@@ -2,7 +2,11 @@
 API Route Definitions
 
 REST endpoints for the AI service.
-Chapter 14: Hybrid search (vector + BM25 → RRF fusion → permission filter).
+共汇 RAG Pipeline:
+- 文档解析: 父子切块 → LLM 元数据提取 → 父块入 Redis / 子块入 Qdrant + ES BM25
+- 混合检索: ES BM25 + Qdrant 向量双路召回 → RRF 融合 → 元数据权限过滤 → 父块回溯
+- 智能问答: LLM 改写 query → 混合检索 → SSE 流式生成 + 来源标注
+- 评测: RAGAS (faithfulness / answer relevancy / context precision) + Langfuse
 """
 
 from __future__ import annotations
@@ -29,8 +33,6 @@ from app.schemas.responses import (
     SearchChunk,
     SearchResult,
 )
-from app.services.bm25_index import get_bm25_manager
-from app.services.chunker import chunk_text
 from app.services.parser import (
     EmptyDocumentError,
     ParserError,
@@ -81,21 +83,20 @@ def create_health_router() -> APIRouter:
 @documents_router.post(
     "/parse",
     response_model=ParseResult,
-    summary="解析文档（完整流水线 + BM25 索引）",
+    summary="解析文档（父子切块 + LLM 元数据 + Qdrant + ES BM25）",
     description="""
     **完整处理流水线：**
 
     1. **MinIO 下载**
     2. **文本提取** (PDF/DOCX/XLSX/TXT/MD)
-    3. **文本切分** (TextChunker)
-    4. **向量化 + 写入 Chroma** (BGE-large-zh → kb_{id})
-    5. **重建 BM25 索引** (jieba 分词 → BM25Okapi)
-
-    每解析一个文档后自动重建该 KB 的 BM25 全文索引，
-    确保混合检索始终使用最新数据。
+    3. **父子切块** (父块段落级 ~1000 / 子块句子级 ~200)
+    4. **LLM 元数据提取** (topic / keywords)
+    5. **父块写入 Redis** (回溯用)
+    6. **子块 embedding 写入 Qdrant** (检索入口)
+    7. **子块写入 ES BM25 索引** (IK 中文分词，双路召回)
     """,
     responses={
-        200: {"description": "解析 + 向量化 + BM25 索引完成"},
+        200: {"description": "解析 + 父子切块 + 向量化 + BM25 索引完成"},
         400: {"model": ErrorResult},
         404: {"model": ErrorResult},
         500: {"model": ErrorResult},
@@ -105,7 +106,7 @@ async def parse_document(request: ParseRequest):
     """
     Full document parsing pipeline.
 
-    parse → chunk → embed → Chroma → BM25 rebuild
+    parse → 父子切块 → LLM 元数据 → 父块入 Redis / 子块入 Qdrant + ES BM25
     """
     t_total = time.perf_counter()
 
@@ -143,47 +144,33 @@ async def parse_document(request: ParseRequest):
     t_parse = (time.perf_counter() - t_step) * 1000
     text_length = len(raw_text)
 
-    # ---- Step 3: Chunk ----
-    t_step = time.perf_counter()
-    chunks = chunk_text(raw_text)
-    t_chunk = (time.perf_counter() - t_step) * 1000
-
-    # ---- Step 4: Embed + Write to Chroma ----
+    # ---- Step 3-7: 父子切块 + LLM 元数据 + Qdrant + ES BM25（统一走 RAG 服务）----
     t_step = time.perf_counter()
 
-    store = get_vector_store()
-    written = store.add_chunks_full(
-        kb_id=request.kb_id,
+    from app.services.langchain_rag_service import get_rag_service
+    rag = get_rag_service()
+    result = rag.index_document(
         document_id=request.doc_id,
-        chunks=chunks,
+        kb_id=request.kb_id,
+        content=raw_text,
         file_name=request.file_name or "unknown",
         owner_id=request.owner_id,
         visibility=request.visibility,
         org_id=request.org_id,
+        doc_version=1,
     )
 
-    t_vector = (time.perf_counter() - t_step) * 1000
+    t_index = (time.perf_counter() - t_step) * 1000
+    written = result.get("child_chunks", 0)
 
-    # ---- Step 5: Rebuild BM25 index for this KB ----
-    t_step = time.perf_counter()
-
-    # Load ALL chunks for this KB and rebuild index
-    bm25_mgr = get_bm25_manager()
-    bm25_mgr.rebuild_for_kb(request.kb_id, chunks)
-    # NOTE: In production, this should aggregate chunks from ALL documents
-    # in the KB.  For now, we track chunks per-kb incrementally.
-    # Future enhancement: store.fetch_all_chunks_for_kb(kb_id) → rebuild.
-
-    t_bm25 = (time.perf_counter() - t_step) * 1000
-
-    # ---- Step 6: Summary ----
+    # ---- Step 8: Summary ----
     t_total_elapsed = (time.perf_counter() - t_total) * 1000
 
     logger.info(
-        "全流水线完成: doc_id=%d, chunks=%d, "
-        "download=%.0fms parse=%.0fms chunk=%.0fms vector=%.0fms bm25=%.0fms total=%.0fms",
-        request.doc_id, written,
-        t_download, t_parse, t_chunk, t_vector, t_bm25, t_total_elapsed,
+        "全流水线完成: doc_id=%d, 父块=%d 子块=%d, "
+        "download=%.0fms parse=%.0fms index=%.0fms total=%.0fms",
+        request.doc_id, result.get("parent_chunks", 0), written,
+        t_download, t_parse, t_index, t_total_elapsed,
     )
 
     return ParseResult(
@@ -194,12 +181,10 @@ async def parse_document(request: ParseRequest):
             f"全流水线完成 | "
             f"类型: {request.file_type.upper()} | "
             f"文本: {text_length} 字符 | "
-            f"切片: {len(chunks)} → {written} 写入 | "
-            f"BM25: {len(chunks)} 条索引 | "
+            f"父块: {result.get('parent_chunks', 0)} / 子块: {written} | "
             f"下载: {t_download:.0f}ms | "
             f"解析: {t_parse:.0f}ms | "
-            f"切分: {t_chunk:.0f}ms | "
-            f"向量化: {t_vector:.0f}ms | "
+            f"索引(LLM+Qdrant+ES): {t_index:.0f}ms | "
             f"总耗时: {t_total_elapsed:.0f}ms"
         ),
         text="",
@@ -213,19 +198,20 @@ async def parse_document(request: ParseRequest):
 @documents_router.post(
     "/vectors/delete",
     response_model=dict,
-    summary="删除文档向量",
-    description="删除指定文档在 Chroma 向量库中的所有向量数据。",
+    summary="删除文档索引数据",
+    description="删除指定文档在 Qdrant 子块 + Redis 父块 + ES BM25 索引中的所有数据。",
     responses={
         200: {"description": "删除成功"},
         400: {"model": ErrorResult},
     },
 )
 async def delete_vectors(request: VectorDeleteRequest):
-    """Delete all vectors for a document from Chroma."""
-    logger.info("删除向量: doc_id=%d, kb_id=%d", request.doc_id, request.kb_id)
+    """Delete all index data for a document from Qdrant + Redis + ES BM25."""
+    logger.info("删除索引数据: doc_id=%d, kb_id=%d", request.doc_id, request.kb_id)
 
-    store = get_vector_store()
-    deleted = store.delete_by_document_id(
+    from app.services.langchain_rag_service import get_rag_service
+    rag = get_rag_service()
+    result = rag.delete_document(
         kb_id=request.kb_id, document_id=request.doc_id,
     )
 
@@ -233,7 +219,88 @@ async def delete_vectors(request: VectorDeleteRequest):
         "status": "ok",
         "doc_id": request.doc_id,
         "kb_id": request.kb_id,
-        "deleted_count": deleted,
+        "deleted_child_vectors": result.get("deleted_child_vectors", 0),
+        "deleted_parent_chunks": result.get("deleted_parent_chunks", 0),
+    }
+
+# ============================================================
+# Document Incremental Rebuild (编辑场景 - 版本号定位增量重建)
+# ============================================================
+
+@documents_router.post(
+    "/rebuild",
+    response_model=dict,
+    summary="增量重建文档索引（编辑场景）",
+    description="""
+    **增量重建流水线（缓解频繁全量重构的 token 消耗）：**
+
+    1. 读取 Redis 中文档当前版本号 `old_version`
+    2. 仅删除 Qdrant 中 `old_version` 的子块（按版本号过滤，不影响并发其他版本）
+    3. 以 `new_version = old_version + 1` 重新父子切块 + LLM 元数据提取 + 入库
+    4. 父块写入 Redis（更新版本号）
+
+    **适用场景：** 文档编辑后，定位变更版本仅重建受影响子块，避免全量重构。
+    """,
+    responses={
+        200: {"description": "增量重建完成"},
+        400: {"model": ErrorResult},
+        500: {"model": ErrorResult},
+    },
+)
+async def rebuild_document_incremental(request: ParseRequest):
+    """Incremental rebuild: locate changed version then rebuild only affected chunks."""
+    t_total = time.perf_counter()
+
+    logger.info(
+        "增量重建: doc_id=%d, kb_id=%d, type=%s, file=%s",
+        request.doc_id, request.kb_id, request.file_type, request.file_name,
+    )
+
+    minio = MinioClient.get_client()
+    try:
+        file_bytes = minio.download_file(request.minio_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"文件不存在于 MinIO: {request.minio_path}")
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=f"MinIO 下载失败: {e}")
+
+    try:
+        raw_text = parse_document(file_bytes, request.file_type)
+    except (UnsupportedFormatError, EmptyDocumentError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ParserError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    from app.services.langchain_rag_service import get_rag_service
+    rag = get_rag_service()
+    result = rag.rebuild_document_incremental(
+        document_id=request.doc_id,
+        kb_id=request.kb_id,
+        content=raw_text,
+        file_name=request.file_name or "unknown",
+        owner_id=request.owner_id,
+        visibility=request.visibility,
+        org_id=request.org_id,
+    )
+
+    elapsed = (time.perf_counter() - t_total) * 1000
+    logger.info(
+        "增量重建完成: doc_id=%d, old_version=%d, new_version=%d, "
+        "删除旧子块=%d, 父块=%d 子块=%d, 耗时=%.0fms",
+        request.doc_id, result.get("old_version", 0), result.get("new_version", 0),
+        result.get("deleted_old_child_chunks", 0),
+        result.get("parent_chunks", 0), result.get("child_chunks", 0), elapsed,
+    )
+
+    return {
+        "status": "SUCCESS",
+        "doc_id": request.doc_id,
+        "old_version": result.get("old_version", 0),
+        "new_version": result.get("new_version", 0),
+        "deleted_old_child_chunks": result.get("deleted_old_child_chunks", 0),
+        "parent_chunks": result.get("parent_chunks", 0),
+        "child_chunks": result.get("child_chunks", 0),
+        "elapsed_ms": round(elapsed, 2),
     }
 
 
@@ -248,8 +315,8 @@ async def delete_vectors(request: VectorDeleteRequest):
     description="""
     **混合检索流水线：**
 
-    1. **向量语义检索** — Embed query → Chroma similarity search
-    2. **BM25 关键词检索** — jieba 分词 → BM25Okapi 索引查询
+    1. **向量语义检索** — Embed query → Qdrant similarity search（payload 层权限过滤）
+    2. **ES BM25 关键词检索** — ES IK 中文分词 → BM25 查询（双路召回）
     3. **RRF 融合** — Reciprocal Rank Fusion (k=60)
        - `score = alpha * vec_rrf + (1-alpha) * bm25_rrf`
        - alpha=0 → 纯 BM25, alpha=1 → 纯向量
@@ -258,7 +325,8 @@ async def delete_vectors(request: VectorDeleteRequest):
        - owner → 查看自己上传的
        - PUBLIC → 任何人可见
        - ORG → 同组织可见
-    5. **Top-K + 阈值过滤**
+    5. **父块回溯** — 命中子块后回溯 Redis 父块，提供完整上下文
+    6. **Top-K + 阈值过滤**
 
     **返回结果** 按 RRF 融合分数降序排列。
     """,

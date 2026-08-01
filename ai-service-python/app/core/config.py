@@ -4,18 +4,17 @@ Application Configuration (pydantic-settings)
 Reads all configuration from environment variables / .env file.
 All settings are typed and validated at startup.
 
-RAG 智能问答架构:
+RAG 智能问答架构（父子切块策略）:
 - 文档元数据: MySQL
-- 文档内容父子切块:
-  - 父切块 (Parent Chunks): Chroma 向量数据库
-  - 子切块 (Child Chunks): Redis (精确匹配 + 缓存)
+- 父子切块:
+  - 父切块 (Parent Chunks, 段落级): Redis 缓存（命中后回溯提供完整上下文）
+  - 子切块 (Child Chunks, 句子级): Qdrant 向量数据库（embedding 做检索入口）
 
-Chroma 优势:
-- 嵌入式向量数据库，无需独立服务部署
-- 支持持久化存储到磁盘
-- 内置 HNSW 索引，搜索效率高
-- REST API + Python SDK 双协议
-- 适合中小规模知识库（万~百万级向量）
+Qdrant 优势:
+- 生产级向量数据库，独立服务部署，支持水平扩展
+- 内置 HNSW 索引 + payload 过滤，支持元数据权限过滤
+- 支持 RRF 融合所需的高效召回
+- 适合中小~大规模知识库（万~亿级向量）
 """
 
 from __future__ import annotations
@@ -89,14 +88,45 @@ class Settings(BaseSettings):
         description="是否对 embedding 做 L2 归一化"
     )
 
-    # ---- Chroma Vector Store (父切块) ----
-    CHROMA_COLLECTION_PREFIX: str = Field(
+    # ---- Qdrant Vector Store (子切块 embedding 检索入口) ----
+    QDRANT_HOST: str = Field(default="localhost", description="Qdrant 服务主机")
+    QDRANT_PORT: int = Field(default=6333, description="Qdrant REST 端口")
+    QDRANT_GRPC_PORT: int = Field(default=6334, description="Qdrant gRPC 端口")
+    QDRANT_API_KEY: str = Field(default="", description="Qdrant API Key（可选，集群启用鉴权时填写）")
+    QDRANT_COLLECTION_PREFIX: str = Field(
         default="kb_",
-        description="Chroma Collection 名称前缀（后跟 kb_id）"
+        description="Qdrant Collection 名称前缀（后跟 kb_id）"
     )
-    CHROMA_PERSIST_DIR: str = Field(
-        default="data/chroma",
-        description="Chroma 持久化存储目录（相对于容器工作目录）"
+    QDRANT_DISTANCE: str = Field(
+        default="Cosine",
+        description="距离度量: Cosine / Euclid / Dot"
+    )
+    QDRANT_PREFER_GRPC: bool = Field(
+        default=True,
+        description="是否优先使用 gRPC（高吞吐场景推荐）"
+    )
+
+    # ---- Elasticsearch (BM25 双路召回 + 元数据权限过滤) ----
+    ES_URIS: str = Field(default="http://localhost:9200", description="Elasticsearch 地址")
+    ES_USERNAME: str = Field(default="", description="ES 用户名（可选）")
+    ES_PASSWORD: str = Field(default="", description="ES 密码（可选）")
+    ES_BM25_INDEX_PREFIX: str = Field(
+        default="kb_",
+        description="BM25 索引前缀（每个 kb 一个索引: kb_{kb_id}）"
+    )
+    ES_BM25_ENABLED: bool = Field(
+        default=True,
+        description="是否启用 ES BM25 检索路径（关闭则回退到本地 rank-bm25）"
+    )
+
+    # ---- LLM 元数据自动提取 ----
+    LLM_METADATA_ENABLED: bool = Field(
+        default=True,
+        description="是否启用 LLM 自动提取切块元数据（主题/关键词/摘要）"
+    )
+    LLM_METADATA_BATCH_SIZE: int = Field(
+        default=5,
+        description="LLM 元数据提取批量大小（每次喂给 LLM 的切块数）"
     )
 
     # ---- LLM / Chat ----
@@ -178,9 +208,9 @@ class Settings(BaseSettings):
         return self.MINIO_ENDPOINT.replace("http://", "").replace("https://", "")
 
     @property
-    def chroma_persist_path(self) -> str:
-        """Chroma persistent storage path."""
-        return self.CHROMA_PERSIST_DIR
+    def qdrant_url(self) -> str:
+        """Qdrant REST URL."""
+        return f"http://{self.QDRANT_HOST}:{self.QDRANT_PORT}"
 
     @property
     def redis_url(self) -> str:
