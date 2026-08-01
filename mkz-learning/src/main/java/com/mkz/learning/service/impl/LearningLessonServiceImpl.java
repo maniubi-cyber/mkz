@@ -343,4 +343,18 @@ public class LearningLessonServiceImpl extends ServiceImpl<LearningLessonMapper,
 
         baseMapper.deleteById(id);
     }
+
+    @Override
+    public void deleteUserLesson(Long userId, Long courseId) {
+        // 按用户 + 课程定位课表记录（退款场景：userId 来自 MQ 消息，不依赖线程级 UserContext）
+        LearningLesson lesson = lambdaQuery()
+                .eq(LearningLesson::getUserId, userId)
+                .eq(LearningLesson::getCourseId, courseId)
+                .one();
+        if (lesson == null) {
+            log.warn("退款删课：未找到用户{}的课程{}对应的课表记录", userId, courseId);
+            return;
+        }
+        baseMapper.deleteById(lesson.getId());
+    }
 }

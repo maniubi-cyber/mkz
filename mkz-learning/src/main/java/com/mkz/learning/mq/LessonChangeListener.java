@@ -99,10 +99,10 @@ public class LessonChangeListener extends AbstractIdempotentListener<OrderBasicD
             // 此处不能抛异常，否则MQ会不停的重试。
             return;
         }
-        // 调用service，退款后删除用户课表课程
+        // 调用service，按用户+课程删除课表（退款场景：以消息中的 userId 为准，不依赖线程级 UserContext）
         List<Long> courseIds = dto.getCourseIds();
         for (Long courseId : courseIds) {
-            lessonService.deleteMyLessons(courseId);
+            lessonService.deleteUserLesson(dto.getUserId(), courseId);
         }
     }
 }

@@ -37,4 +37,12 @@ public interface ILearningLessonService extends IService<LearningLesson> {
     LearningPlanPageVO queryMyPlans(PageQuery query);
 
     void deleteMyLessons(Long id);
+
+    /**
+     * 按用户 + 课程删除课表记录（退款场景使用）
+     *
+     * @param userId   用户ID（来自退款消息，不依赖线程级 UserContext）
+     * @param courseId 课程ID
+     */
+    void deleteUserLesson(Long userId, Long courseId);
 }

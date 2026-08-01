@@ -48,6 +48,11 @@ public class PointsRecord implements Serializable {
     private Integer points;
 
     /**
+     * 积分说明（如商城消费对应的商品/订单说明）
+     */
+    private String description;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createTime;

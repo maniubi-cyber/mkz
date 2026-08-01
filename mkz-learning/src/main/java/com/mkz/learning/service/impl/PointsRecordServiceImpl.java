@@ -170,11 +170,11 @@ public class PointsRecordServiceImpl extends ServiceImpl<PointsRecordMapper, Poi
         // 记录积分使用记录（积分值为负数表示使用）
         PointsRecord record = new PointsRecord();
         record.setUserId(userId);
-        record.setType(PointsRecordType.SHOP); // 假设类型5为积分商城消费
+        record.setType(PointsRecordType.SHOP); // 积分商城消费
         record.setPoints(-points); // 使用积分为负值
-//        record.setDescription(description);
-        // 保存积分记录到数据库
-        // pointsRecordMapper.insert(record); // 需要启用此代码
+        record.setDescription(description);
+        // 保存积分使用记录（流水）到数据库，作为权威记录，与 Redis 扣减共同保障一致性
+        this.save(record);
     }
 
     @Override

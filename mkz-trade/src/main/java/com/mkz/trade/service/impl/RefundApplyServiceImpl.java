@@ -46,6 +46,8 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.statemachine.StateMachine;
 import org.springframework.statemachine.persist.StateMachinePersister;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -76,6 +78,11 @@ public class RefundApplyServiceImpl extends ServiceImpl<RefundApplyMapper, Refun
     private final ThreadPoolTaskExecutor sendRefundRequestExecutor;
     private final RabbitMqHelper rabbitMqHelper;
     private final IOrderService orderService;
+
+    // 自注入代理（@Lazy 打破循环依赖），用于在线程池回调中通过代理调用，确保 @Transactional 生效
+    @Lazy
+    @Autowired
+    private RefundApplyServiceImpl self;
 
     @Override
     public List<RefundApply> queryByDetailId(Long id) {
@@ -522,7 +529,7 @@ public class RefundApplyServiceImpl extends ServiceImpl<RefundApplyMapper, Refun
     }
 
     private void sendRefundRequestAsync(RefundApply refundApply) {
-        sendRefundRequestExecutor.execute(() -> this.sendRefundRequest(refundApply));
+        sendRefundRequestExecutor.execute(() -> self.sendRefundRequest(refundApply));
     }
 
     @Override

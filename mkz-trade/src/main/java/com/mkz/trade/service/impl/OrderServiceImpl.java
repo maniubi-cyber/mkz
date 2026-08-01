@@ -75,7 +75,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     private final PromotionClient promotionClient;
     //订单状态机类
     private final  StateMachine<OrderStatus, OrderStatusChangeEvent> orderStateMachine;
-    private final  StateMachinePersister<OrderStatus, OrderStatusChangeEvent, String> stateMachineMemPersister;
+    private final  StateMachinePersister<OrderStatus, OrderStatusChangeEvent, String> stateMachineRedisPersister;
 
     /**
      * 发送订单状态转换事件
@@ -91,11 +91,11 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
             //启动状态机
             orderStateMachine.start();
             //尝试恢复状态机状态
-            stateMachineMemPersister.restore(orderStateMachine, String.valueOf(order.getId()));
+            stateMachineRedisPersister.restore(orderStateMachine, String.valueOf(order.getId()));
             Message message = MessageBuilder.withPayload(changeEvent).setHeader("order", order).build();
             result = orderStateMachine.sendEvent(message);
             //持久化状态机状态
-            stateMachineMemPersister.persist(orderStateMachine, String.valueOf(order.getId()));
+            stateMachineRedisPersister.persist(orderStateMachine, String.valueOf(order.getId()));
         } catch (Exception e) {
             log.error("订单操作失败:{}", e);
         } finally {

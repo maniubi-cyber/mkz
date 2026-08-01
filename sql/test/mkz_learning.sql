@@ -457,8 +457,9 @@ DROP TABLE IF EXISTS `points_record`;
 CREATE TABLE `points_record`  (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '积分记录表id',
   `user_id` bigint NOT NULL COMMENT '用户id',
-  `type` tinyint NOT NULL COMMENT '积分方式：1-课程学习，2-每日签到，3-课程问答， 4-课程笔记，5-课程评价',
+  `type` tinyint NOT NULL COMMENT '积分方式：1-课程学习，2-每日签到，3-课程问答，4-课程笔记，5-课程评价，10-商城消费',
   `points` tinyint NOT NULL COMMENT '积分值',
+  `description` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '积分说明（如商城消费对应的商品/订单说明）',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_user_id`(`user_id` ASC, `type` ASC) USING BTREE,
