@@ -19,6 +19,15 @@ INJECTION_PATTERNS = [
     r"you\s+are\s+now\s+(a|an)\s+",  # 角色劫持
     r"reveal\s+(your|the)\s+(system|prompt|instructions?)",
     r"DAN\s+mode",
+    # 越权意图
+    r"提升(你的)?(权限|privilege)",
+    r"privilege\s*escalation",
+    r"以(管理员|admin)身份",
+    r"act\s+as\s+admin",
+    r"bypass\s+(auth|authentication|权限|鉴权)",
+    r"绕过(权限|鉴权|auth|安全)",
+    r"忽略(权限|鉴权|安全)检查",
+    r"ignore\s+(permission|auth|security)\s+checks?",
 ]
 
 

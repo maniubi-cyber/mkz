@@ -21,6 +21,7 @@ class ApprovalStatus(Enum):
     PENDING = "PENDING"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
+    EXECUTED = "EXECUTED"
 
 
 class ApprovalService:
@@ -69,13 +70,14 @@ class ApprovalService:
         tool_name: str,
         tool_args: dict,
         description: str,
+        jwt_token: str = "",
     ) -> str:
         """创建审批请求，返回 approval_id。
 
         审批记录以 JSON 形式写入 Redis：
         key = approval_prefix + approval_id
-        value = {id, user_id, session_id, tool_name, tool_args, description,
-                 status=PENDING, created_at, updated_at}
+        value = {id, user_id, session_id, tool_name, tool_args, jwt_token,
+                 description, status=PENDING, created_at, updated_at}
         TTL = approval_ttl_hours 小时
         """
         approval_id = uuid.uuid4().hex
@@ -86,6 +88,7 @@ class ApprovalService:
             "session_id": session_id,
             "tool_name": tool_name,
             "tool_args": tool_args,
+            "jwt_token": jwt_token,
             "description": description,
             "status": ApprovalStatus.PENDING.value,
             "created_at": now,
@@ -112,6 +115,30 @@ class ApprovalService:
         """查询审批详情。审批单不存在时返回空字典。"""
         record = self._load(approval_id)
         return record or {}
+
+    def get_execution_context(self, approval_id: str) -> Optional[dict]:
+        """取出审批通过后可执行工具所需的上下文（状态/工具名/参数/jwt）。
+
+        不存在或已过期返回 None。
+        """
+        record = self._load(approval_id)
+        if record is None:
+            return None
+        return {
+            "status": record.get("status"),
+            "tool_name": record.get("tool_name"),
+            "tool_args": record.get("tool_args"),
+            "jwt_token": record.get("jwt_token", ""),
+        }
+
+    def mark_executed(self, approval_id: str, result: dict) -> None:
+        """将审批单标记为已执行并记录工具执行结果。"""
+        record = self._load(approval_id)
+        if record is None:
+            return
+        record["status"] = ApprovalStatus.EXECUTED.value
+        record["execution_result"] = result
+        self._save(approval_id, record)
 
     def approve(self, approval_id: str) -> bool:
         """审批通过，更新状态为 APPROVED。审批单不存在时返回 False。"""

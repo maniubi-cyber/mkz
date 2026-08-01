@@ -248,12 +248,23 @@ class ReactAgent:
 
             llm_output = self._extract_text(self._llm.invoke(prompt))
             thought = self._parse_thought(llm_output)
-            action, action_input = self._parse_action(llm_output)
+            action, action_input, json_failed = self._parse_action(llm_output)
             final_answer = self._parse_final_answer(llm_output)
 
             # 推送思考过程
             if thought:
                 yield self._sse_event("thought", content=thought)
+
+            # Action Input 不是合法 JSON：携带格式纠正提示词让 LLM 重新生成
+            if action is not None and json_failed:
+                scratchpad += (
+                    f"\nThought: {thought}\n"
+                    f"Action: {action}\n"
+                    f"Action Input: [解析失败，非合法JSON]\n"
+                    f"Observation: 上一次 Action Input 不是合法的 JSON 格式，"
+                    f"请重新输出合法的 JSON 参数（例如 {{\"key\": \"value\"}}）。\n"
+                )
+                continue
 
             # 有工具调用则执行
             if action is not None:
@@ -353,19 +364,22 @@ class ReactAgent:
         return match.group(1).strip() if match else ""
 
     @staticmethod
-    def _parse_action(text: str) -> tuple[Optional[str], dict]:
-        """解析 Action 与 Action Input 字段，返回 (工具名, 参数字典)。"""
+    def _parse_action(text: str) -> tuple[Optional[str], dict, bool]:
+        """解析 Action 与 Action Input 字段，返回 (工具名, 参数字典, 是否JSON解析失败)。
+
+        json_failed=True 供上层携带格式纠正提示词重试，而非静默吞掉。
+        """
         match = _ACTION_RE.search(text)
         if not match:
-            return None, {}
+            return None, {}, False
         action = match.group(1).strip()
         try:
             action_input = json.loads(match.group(2).strip())
             if not isinstance(action_input, dict):
-                action_input = {}
+                return action, {}, True
         except json.JSONDecodeError:
-            action_input = {}
-        return action, action_input
+            return action, {}, True
+        return action, action_input, False
 
     @staticmethod
     def _parse_final_answer(text: str) -> Optional[str]:

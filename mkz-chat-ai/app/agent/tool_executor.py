@@ -74,8 +74,17 @@ class ToolExecutor:
                 error_message="检测到提示词注入，已拦截该工具调用。",
             )
 
-        # 2. 查询工具风险等级（未注册工具在此抛 KeyError，由上层捕获）
-        _func, level = self._registry.get(tool_name)
+        # 2. 查询工具风险等级（未注册工具视为未知工具，降级回传而非中断循环）
+        try:
+            _func, level = self._registry.get(tool_name)
+        except KeyError:
+            logger.warning("用户 %s 调用了未知工具 %s", user_id, tool_name)
+            return ToolResult(
+                success=False,
+                error_message=(
+                    f"未找到名为 '{tool_name}' 的工具，请使用已提供的工具之一。"
+                ),
+            )
 
         # 3. 按风险等级分流执行
         if level == ToolRiskLevel.LOW:
@@ -153,6 +162,7 @@ class ToolExecutor:
             session_id=session_id,
             tool_name=tool_name,
             tool_args=tool_args,
+            jwt_token=jwt_token,
             description=description,
         )
         logger.info(
@@ -199,6 +209,43 @@ class ToolExecutor:
             approval_id=approval_id,
             approval_status=ToolResult.PENDING,
         )
+
+    async def approve_and_execute(
+        self,
+        approval_id: str,
+    ) -> ToolResult:
+        """审批通过后真正执行高级工具，闭合 HITL 链路。
+
+        由审批路由在 approve 后调用：从审批单取出工具名/参数/jwt，
+        校验状态为 APPROVED 后执行，并将执行结果写回审批记录。
+        """
+        context = self._approval_service.get_execution_context(approval_id)
+        if context is None:
+            return ToolResult(
+                success=False,
+                error_message="审批单不存在或已过期",
+                approval_id=approval_id,
+                approval_status=ToolResult.REJECTED,
+            )
+        if context["status"] != ApprovalStatus.APPROVED.value:
+            return ToolResult(
+                success=False,
+                error_message=f"审批状态为 {context['status']}，无法执行",
+                approval_id=approval_id,
+                approval_status=context["status"],
+            )
+        result = await self._execute_with_retry(
+            context["tool_name"], context["tool_args"], context.get("jwt_token", "")
+        )
+        self._approval_service.mark_executed(
+            approval_id,
+            {
+                "success": result.success,
+                "data": result.data,
+                "error_message": result.error_message,
+            },
+        )
+        return result
 
     async def _execute_with_retry(
         self,

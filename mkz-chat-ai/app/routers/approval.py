@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
-from app.dependencies import get_approval_service
+from app.dependencies import get_approval_service, get_tool_executor
 
 router = APIRouter()
 
@@ -31,10 +31,18 @@ async def get_detail(approval_id: str):
 
 @router.put("/{approval_id}/approve")
 async def approve(approval_id: str):
-    """审批通过，更新状态为 APPROVED。审批单不存在时返回 success=False。"""
+    """审批通过：更新状态为 APPROVED 并真正执行对应高级工具，闭合 HITL 链路。"""
     svc = get_approval_service()
     ok = svc.approve(approval_id)
-    return {"success": ok}
+    if not ok:
+        return {"success": False}
+    executor = get_tool_executor()
+    result = await executor.approve_and_execute(approval_id)
+    return {
+        "success": True,
+        "executed": result.success,
+        "message": result.error_message or "操作已执行成功",
+    }
 
 
 @router.put("/{approval_id}/reject")
