@@ -1,4 +1,4 @@
-package com.mkz.live.domain.dto;
+package com.mkz.api.dto.live;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 直播开始消息（RocketMQ 消息体）
+ * 直播开始消息（RocketMQ 跨服务消息体：mkz-live 发布，mkz-message 消费）
  */
 @Data
 @ApiModel(description = "直播开始消息")

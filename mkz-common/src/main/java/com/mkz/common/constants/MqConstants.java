@@ -237,5 +237,10 @@ public interface MqConstants {
          * 直播服务有关消费组
          */
         String LIVE_GROUP = "consumer_group_live";
+
+        /**
+         * 消息中心订阅直播开始消息（写站内信）的消费组
+         */
+        String LIVE_NOTICE_GROUP = "consumer_group_message_live_start";
     }
 }

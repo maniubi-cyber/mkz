@@ -1,10 +1,10 @@
 package com.mkz.live.mq;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mkz.api.dto.live.LiveStartMsgDTO;
 import com.mkz.common.constants.MqConstants;
 import com.mkz.common.mq.AbstractIdempotentListener;
 import com.mkz.common.utils.MessageIdempotentUtil;
-import com.mkz.live.domain.dto.LiveStartMsgDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.spring.annotation.MessageModel;
@@ -15,10 +15,11 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 
 /**
- * 直播开始消息监听器
+ * 直播开始消息监听器（直播服务自身订阅）
  * <p>
- * 消费直播服务自身发布的 live.start 消息，开播后异步处理
- * （如向报名用户推送开播提醒，当前最小骨架仅记录日志）。
+ * 消费直播服务发布的 live.start 消息，作为开播后的异步处理入口。
+ * 开播提醒站内信由消息中心 {@code LiveStartNoticeListener}（独立消费组）写入，
+ * 本监听器当前仅记录日志，后续可扩展开播统计等内部处理。
  * 采用 {@link AbstractIdempotentListener} 幂等消费，businessId（消息keys）作为消费幂等键。
  */
 @Component
