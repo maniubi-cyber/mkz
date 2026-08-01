@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.mkz.api.dto.live.LiveStartMsgDTO;
+import com.mkz.api.dto.live.LiveStopMsgDTO;
 import com.mkz.common.autoconfigure.mq.RocketMqHelper;
 import com.mkz.common.constants.MqConstants;
 import com.mkz.common.domain.dto.PageDTO;
@@ -146,6 +147,50 @@ public class LiveRoomServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> i
             update.setPlaybackUrl(playbackUrl);
         }
         this.updateById(update);
+        // 发布直播结束消息（回放生成、停播提醒等由订阅方处理）
+        publishStopEvent(room);
+    }
+
+    @Override
+    public int closeExpiredRooms() {
+        LocalDateTime now = LocalDateTime.now();
+        List<LiveRoom> rooms = this.lambdaQuery()
+                .eq(LiveRoom::getStatus, 1)
+                .isNotNull(LiveRoom::getEndTime)
+                .lt(LiveRoom::getEndTime, now)
+                .list();
+        if (CollUtils.isEmpty(rooms)) {
+            return 0;
+        }
+        int closed = 0;
+        for (LiveRoom room : rooms) {
+            LiveRoom update = new LiveRoom();
+            update.setId(room.getId());
+            update.setStatus(2);
+            if (room.getActualEndTime() == null) {
+                update.setActualEndTime(now);
+            }
+            this.updateById(update);
+            publishStopEvent(room);
+            closed++;
+        }
+        return closed;
+    }
+
+    /**
+     * 发布直播结束消息
+     */
+    private void publishStopEvent(LiveRoom room) {
+        LiveStopMsgDTO msg = new LiveStopMsgDTO();
+        msg.setLiveId(room.getId());
+        msg.setTitle(room.getTitle());
+        msg.setEndTime(LocalDateTime.now());
+        boolean sent = rocketMqHelper.sendSync(MqConstants.Topic.LIVE_TOPIC,
+                MqConstants.Tag.LIVE_STOP_TAG, "live-stop-" + room.getId(), msg);
+        if (!sent) {
+            // 消息发送失败：当前仅记录日志，后续可接入本地消息表 + XXL-Job 补偿
+            log.error("直播结束消息发送失败，liveId={}", room.getId());
+        }
     }
 
     /**

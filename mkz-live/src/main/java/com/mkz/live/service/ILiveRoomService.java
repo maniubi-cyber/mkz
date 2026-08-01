@@ -38,7 +38,12 @@ public interface ILiveRoomService extends IService<LiveRoom> {
     void startLive(Long id);
 
     /**
-     * 结束直播（记录回放地址）
+     * 结束直播（记录回放地址，发布直播结束消息）
      */
     void stopLive(Long id, String playbackUrl);
+
+    /**
+     * 定时关播：关闭已过计划结束时间仍处于直播中的房间，返回关闭数量
+     */
+    int closeExpiredRooms();
 }
