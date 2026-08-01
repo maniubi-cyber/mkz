@@ -92,5 +92,7 @@ public class LocalMessage {
         public static final int SUCCESS = 2;
         /** 发送失败 */
         public static final int FAILED = 3;
+        /** 死信：重试次数已耗尽，停止自动补偿，需人工介入/告警 */
+        public static final int DEAD = 4;
     }
 }

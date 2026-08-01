@@ -11,6 +11,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -68,27 +70,36 @@ public class LocalMessageServiceImpl implements LocalMessageService {
     @Override
     public boolean sendMessage(LocalMessage message) {
         try {
-            // 更新状态为发送中
+            // 更新状态为发送中（同时 retry_count + 1，next_retry_time 顺延）
             int rows = localMessageMapper.updateStatusToSending(message.getId());
             if (rows == 0) {
                 log.warn("消息状态不是待发送，可能已被其他线程处理，id: {}", message.getId());
                 return false;
             }
 
-            // 发送消息到RocketMQ
+            // 同步发送消息到RocketMQ（补偿任务需精确感知结果）
             boolean success = rocketMqHelper.sendSync(message.getTopic(), message.getTags(), message.getContent());
 
             if (success) {
-                // 标记发送成功
                 markSuccess(message.getId());
                 log.info("消息发送成功，id: {}", message.getId());
-            } else {
-                // 标记发送失败
-                markFailed(message.getId(), "RocketMQ返回发送失败");
-                log.warn("消息发送失败，id: {}", message.getId());
+                return true;
             }
 
-            return success;
+            // 发送失败：判断是否已耗尽重试次数
+            int newRetryCount = message.getRetryCount() + 1;
+            if (newRetryCount >= message.getMaxRetryCount()) {
+                // 进入死信：停止自动补偿，发出告警（ERROR 日志便于监控采集）
+                String deadMsg = String.format("重试次数耗尽(%d/%d)，进入死信状态",
+                        newRetryCount, message.getMaxRetryCount());
+                localMessageMapper.updateStatusToDead(message.getId(), deadMsg);
+                log.error("[死信告警] 本地消息不再自动补偿，需人工介入。id={}, topic={}, tags={}, businessId={}, {}",
+                        message.getId(), message.getTopic(), message.getTags(), message.getBusinessId(), deadMsg);
+            } else {
+                markFailed(message.getId(), "RocketMQ返回发送失败");
+                log.warn("消息发送失败，id: {}，已重试 {} 次，等待下次补偿", message.getId(), newRetryCount);
+            }
+            return false;
         } catch (Exception e) {
             log.error("消息发送异常，id: {}", message.getId(), e);
             markFailed(message.getId(), e.getMessage());
@@ -128,20 +139,27 @@ public class LocalMessageServiceImpl implements LocalMessageService {
 
     /**
      * 发送业务消息（组合方法）
-     * 在业务事务中保存本地消息记录，并异步发送到 RocketMQ。
-     * 发送失败由 XXL-Job 补偿任务重试，保障消息最终一致性。
+     * 在业务事务中保存本地消息记录，并在【业务事务提交后】异步发送到 RocketMQ。
+     * <p>
+     * 关键修正：MQ 投递通过 {@code TransactionSynchronizationManager#afterCommit} 延迟到事务提交之后，
+     * 避免消费端在事务未提交时读到尚未生效的业务数据（本地消息表标准实践）。
+     * 若事务回滚，afterCommit 不会触发，消息不发送；记录仍处于待发送状态，由 XXL-Job 补偿任务重试，
+     * 从而保障消息最终一致性。
+     * <p>
+     * businessId 同时作为本地消息表的幂等键与 RocketMQ 消息的 keys，
+     * 消费端可通过 message.getKeys() 获取后用于消费幂等。
      *
      * @param topic      主题
      * @param tags       标签
      * @param content    消息内容
-     * @param businessId 业务ID（幂等键，同时写入RocketMQ消息keys）
-     * @return 是否处理成功（已发送过返回true）
+     * @param businessId 业务ID（幂等键，写入 RocketMQ 消息 keys）
+     * @return 是否处理成功（已发送过返回 true）
      */
     @Override
     @Transactional
     public boolean sendBusinessMessage(String topic, String tags, Object content, String businessId) {
         try {
-            // 1. 检查幂等性（根据业务ID查询是否已发送成功）
+            // 1. 幂等校验：同一 businessId 已成功发送则直接返回
             LocalMessage existingMessage = localMessageMapper.selectByBusinessId(businessId);
             if (existingMessage != null) {
                 log.info("消息已发送，无需重复发送，businessId: {}", businessId);
@@ -151,32 +169,51 @@ public class LocalMessageServiceImpl implements LocalMessageService {
             // 2. 序列化消息内容
             String contentJson = objectMapper.writeValueAsString(content);
 
-            // 3. 保存消息记录（与业务同事务，业务回滚则消息不会发送）
+            // 3. 保存消息记录（与业务同事务：业务回滚则消息不会落库，也不会发送）
             LocalMessage message = saveMessage(topic, tags, contentJson, businessId);
 
-            // 4. 构造带 businessId(keys) 的消息，便于消费端通过 message.getKeys() 做消费幂等
-            org.springframework.messaging.Message<String> mqMessage = org.springframework.messaging.support.MessageBuilder
-                    .withPayload(contentJson)
-                    .setHeader(org.apache.rocketmq.spring.support.RocketMQHeaders.KEYS, businessId)
-                    .build();
-
-            // 5. 异步发送消息，回调中更新本地消息表状态（失败由补偿任务重试）
-            rocketMqHelper.sendAsync(topic, tags, mqMessage, new RocketMqHelper.SendCallback() {
-                @Override
-                public void onSuccess(org.apache.rocketmq.client.producer.SendResult sendResult) {
-                    markSuccess(message.getId());
-                }
-
-                @Override
-                public void onException(Throwable e) {
-                    markFailed(message.getId(), e.getMessage());
-                }
-            });
-
+            // 4. 注册事务同步：在业务事务【提交后】才真正投递 MQ。
+            //    若事务回滚，afterCommit 不会触发，消息不发送，由补偿任务按待发送状态重试。
+            if (TransactionSynchronizationManager.isActualTransactionActive()) {
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            @Override
+                            public void afterCommit() {
+                                dispatchAsync(message, topic, tags, contentJson, businessId);
+                            }
+                        });
+            } else {
+                // 极端兜底：无事务上下文时立即投递（正常情况下不会走到这里）
+                dispatchAsync(message, topic, tags, contentJson, businessId);
+            }
             return true;
         } catch (JsonProcessingException e) {
             log.error("消息序列化失败", e);
             return false;
         }
+    }
+
+    /**
+     * 真正投递 MQ（在事务提交后调用）。
+     * 异步发送，回调中更新本地消息表状态；发送失败由 XXL-Job 补偿任务重试。
+     */
+    private void dispatchAsync(LocalMessage message, String topic, String tags,
+                               String contentJson, String businessId) {
+        org.springframework.messaging.Message<String> mqMessage = org.springframework.messaging.support.MessageBuilder
+                .withPayload(contentJson)
+                .setHeader(org.apache.rocketmq.spring.support.RocketMQHeaders.KEYS, businessId)
+                .build();
+
+        rocketMqHelper.sendAsync(topic, tags, mqMessage, new RocketMqHelper.SendCallback() {
+            @Override
+            public void onSuccess(org.apache.rocketmq.client.producer.SendResult sendResult) {
+                markSuccess(message.getId());
+            }
+
+            @Override
+            public void onException(Throwable e) {
+                markFailed(message.getId(), e.getMessage());
+            }
+        });
     }
 }

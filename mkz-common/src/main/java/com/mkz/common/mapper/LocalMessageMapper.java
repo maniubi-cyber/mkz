@@ -63,6 +63,16 @@ public interface LocalMessageMapper extends BaseMapper<LocalMessage> {
     int updateStatusToFailed(@Param("id") Long id, @Param("errorMsg") String errorMsg);
 
     /**
+     * 更新消息状态为死信（重试次数耗尽，停止自动补偿）
+     *
+     * @param id       消息ID
+     * @param errorMsg 错误信息
+     * @return 影响行数
+     */
+    @Update("UPDATE local_message SET status = 4, error_msg = #{errorMsg}, update_time = NOW() WHERE id = #{id}")
+    int updateStatusToDead(@Param("id") Long id, @Param("errorMsg") String errorMsg);
+
+    /**
      * 根据业务ID查询消息（幂等性校验）
      *
      * @param businessId 业务ID

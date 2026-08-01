@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -47,5 +48,17 @@ public class LocalMessageCompensateJob {
             }
         }
         log.info("[本地消息表补偿] 本次扫描 {} 条，成功补偿 {} 条", pending.size(), compensated);
+    }
+
+    /**
+     * 清理过期消息任务
+     * 定期删除已成功发送且超过保留期（默认 7 天）的本地消息记录，避免表无限膨胀。
+     * 仅清理 SUCCESS(2) 状态，不影响待补偿/死信数据。
+     */
+    @XxlJob("localMessageCleanJob")
+    public void clean() {
+        LocalDateTime expireTime = LocalDateTime.now().minusDays(7);
+        int deleted = localMessageService.cleanExpiredMessages(expireTime);
+        log.info("[本地消息表清理] 已清理 {} 条过期成功消息（早于 {}）", deleted, expireTime);
     }
 }
