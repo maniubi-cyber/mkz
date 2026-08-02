@@ -244,16 +244,15 @@ public class RefundOrderServiceImpl extends ServiceImpl<RefundOrderMapper, Refun
         // 3.更新数据库退款单状态
         updateRefundStatus(refundResponse, refundOrder.getId());
 
-        // 4.发送MQ通知业务端
+        // 4.发送MQ通知业务端（按第三方实际退款状态构造成功/失败，避免退款失败被误判为成功）
+        RefundResultDTO refundResultDTO = transferRefundResult(refundResponse);
+        refundResultDTO.setRefundOrderNo(refundOrder.getRefundOrderNo());
+        refundResultDTO.setBizPayOrderId(refundOrder.getBizOrderNo());
+        refundResultDTO.setBizRefundOrderId(refundOrder.getBizRefundOrderNo());
         rabbitMqHelper.send(
                 MqConstants.Exchange.PAY_EXCHANGE,
                 MqConstants.Key.REFUND_CHANGE,
-                RefundResultDTO.success()
-                        .refundOrderNo(refundOrder.getRefundOrderNo())
-                        .bizPayOrderId(refundOrder.getBizOrderNo())
-                        .bizRefundOrderId(refundOrder.getBizRefundOrderNo())
-                        .refundChannel(refundOrder.getRefundChannel())
-                        .build()
+                refundResultDTO
         );
     }
 

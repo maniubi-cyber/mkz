@@ -62,6 +62,11 @@ public class RankingArchiveJobHandler {
                     if (currentSeasonId.equals(seasonId)) {
                         continue;
                     }
+                    // 跳过默认"current"字面量：该 key 可能是默认赛季的实时数据，
+                    // 若被归档将删除实时榜数据且重复入库（history 表无唯一键）
+                    if ("current".equals(seasonId)) {
+                        continue;
+                    }
 
                     // 归档往季冷数据；archiveSeasonData 完成后会删除该 key，天然幂等
                     int count = courseRankingService.archiveSeasonData(seasonId);

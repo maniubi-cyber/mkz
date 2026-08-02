@@ -132,7 +132,7 @@ public class AliPayService implements IPayService {
             throw new CommonException("支付宝查询退款单状态失败", e);
         }
         // 2.解析
-        if (ResponseChecker.success(response)) {
+        if (!ResponseChecker.success(response)) {
             // 2.1.响应结果异常
             return RefundResponse.builder().success(false).code(response.getCode()).msg(response.getMsg()).build();
         }

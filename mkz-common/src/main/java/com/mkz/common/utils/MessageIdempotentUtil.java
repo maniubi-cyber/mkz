@@ -37,4 +37,16 @@ public class MessageIdempotentUtil {
         // trySet：仅当 key 不存在时设置成功，等价于 SET NX EX
         return bucket.trySet("1", DEFAULT_TTL_HOURS, TimeUnit.HOURS);
     }
+
+    /**
+     * 移除消费幂等标记（业务处理失败时回滚标记，使消息重投后可再次消费）
+     *
+     * @param businessId 业务唯一标识（幂等键）
+     */
+    public void remove(String businessId) {
+        if (businessId == null) {
+            return;
+        }
+        redissonClient.getBucket(KEY_PREFIX + businessId).delete();
+    }
 }

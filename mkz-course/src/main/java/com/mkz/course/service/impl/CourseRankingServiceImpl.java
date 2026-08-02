@@ -37,15 +37,16 @@ public class CourseRankingServiceImpl implements ICourseRankingService {
 
     @Override
     public void updateScore(Long courseId, double score) {
-        // 更新当前赛季排行榜
+        // 写入当前赛季排行榜（与查询 getCurrentSeasonId() 的 key 保持一致，避免读写分裂）
+        String key = RankingConstants.COURSE_RANKING_KEY_PREFIX + getCurrentSeasonId();
         redisTemplate.opsForZSet().add(
-                RankingConstants.CURRENT_SEASON_RANKING_KEY,
+                key,
                 courseId.toString(),
                 score
         );
         // 设置过期时间
         redisTemplate.expire(
-                RankingConstants.CURRENT_SEASON_RANKING_KEY,
+                key,
                 RankingConstants.CURRENT_SEASON_EXPIRE_DAYS,
                 TimeUnit.DAYS
         );
@@ -80,8 +81,16 @@ public class CourseRankingServiceImpl implements ICourseRankingService {
         List<CourseRankingVO> result = new ArrayList<>();
         long rank = 1;
         for (ZSetOperations.TypedTuple<String> tuple : tuples) {
+            Long courseId;
+            try {
+                courseId = Long.valueOf(tuple.getValue());
+            } catch (NumberFormatException e) {
+                // 防御：跳过非法成员（如历史遗留的占位数据），避免排行榜接口崩溃
+                log.warn("排行榜存在非法成员，跳过: seasonId={}, member={}", seasonId, tuple.getValue());
+                continue;
+            }
             CourseRankingVO vo = new CourseRankingVO();
-            vo.setCourseId(Long.valueOf(tuple.getValue()));
+            vo.setCourseId(courseId);
             vo.setScore(tuple.getScore());
             vo.setRank(rank++);
             vo.setSeasonId(seasonId);
@@ -143,8 +152,16 @@ public class CourseRankingServiceImpl implements ICourseRankingService {
         List<CourseRanking> records = new ArrayList<>();
         int rank = 1;
         for (ZSetOperations.TypedTuple<String> tuple : tuples) {
+            Long courseId;
+            try {
+                courseId = Long.valueOf(tuple.getValue());
+            } catch (NumberFormatException e) {
+                // 防御：跳过非法成员（如历史遗留的占位数据），避免归档任务崩溃
+                log.warn("归档跳过非法成员: seasonId={}, member={}", seasonId, tuple.getValue());
+                continue;
+            }
             CourseRanking ranking = new CourseRanking();
-            ranking.setCourseId(Long.valueOf(tuple.getValue()));
+            ranking.setCourseId(courseId);
             ranking.setTotalScore(tuple.getScore());
             ranking.setSeasonId(seasonId);
             ranking.setRank(rank++);
@@ -181,10 +198,8 @@ public class CourseRankingServiceImpl implements ICourseRankingService {
                     TimeUnit.DAYS
             );
 
-            // 3. 创建新赛季排行榜
-            String newKey = RankingConstants.COURSE_RANKING_KEY_PREFIX + newSeasonId;
-            redisTemplate.opsForZSet().add(newKey, "init", 0);
-
+            // 3. 创建新赛季排行榜（ZSet 无需初始化，首次写分数时自动建 key；
+            //    不再塞 "init" 占位成员——它会污染排行榜读取与归档（Long.valueOf 崩溃））
             log.info("切换当前赛季成功，newSeasonId: {}", newSeasonId);
             return true;
         } catch (Exception e) {
