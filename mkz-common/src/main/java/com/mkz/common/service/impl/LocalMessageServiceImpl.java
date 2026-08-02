@@ -78,7 +78,13 @@ public class LocalMessageServiceImpl implements LocalMessageService {
             }
 
             // 同步发送消息到RocketMQ（补偿任务需精确感知结果）
-            boolean success = rocketMqHelper.sendSync(message.getTopic(), message.getTags(), message.getContent());
+            // 关键：必须携带 keys（businessId）发送，与正常投递口径一致——
+            // 否则消费端 message.getKeys()=null，所有补偿消息共用 "mq:consumed:null" 幂等键，
+            // 仅首条被消费、其余被误判重复跳过（见 RocketMqHelper.sendSync 带 keys 重载）
+            String keys = message.getBusinessId() != null
+                    ? message.getBusinessId()
+                    : message.getId().toString();
+            boolean success = rocketMqHelper.sendSync(message.getTopic(), message.getTags(), keys, message.getContent());
 
             if (success) {
                 markSuccess(message.getId());

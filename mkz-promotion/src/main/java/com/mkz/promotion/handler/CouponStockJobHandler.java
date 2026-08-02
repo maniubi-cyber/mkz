@@ -70,14 +70,14 @@ public class CouponStockJobHandler {
                         continue;
                     }
 
-                    // 执行预热脚本
+                    // 执行预热脚本（issueEndTime 统一存 epoch 秒，与 Lua 脚本 time()[1] 口径一致）
                     Long result = redisTemplate.execute(
                             PRELOAD_SCRIPT,
                             List.of(key),
                             String.valueOf(coupon.getTotalNum()),
                             String.valueOf(coupon.getUserLimit()),
-                    String.valueOf(coupon.getIssueEndTime() != null ? 
-                            coupon.getIssueEndTime().toString() : "9999999999")
+                            String.valueOf(coupon.getIssueEndTime() != null ?
+                                    com.mkz.common.utils.DateUtils.toEpochMilli(coupon.getIssueEndTime()) / 1000 : 9999999999L)
                     );
 
                     if (result != null && result == 0) {
@@ -119,18 +119,24 @@ public class CouponStockJobHandler {
                 try {
                     String key = PromotionConstants.COUPON_CACHE_KEY_PREFIX + coupon.getId();
                     
-                    // 获取Redis中的库存信息
-                    String totalNumStr = redisTemplate.opsForHash().get(key, "totalNum") != null ? 
+                    // 获取Redis中的剩余库存
+                    String remainingStr = redisTemplate.opsForHash().get(key, "totalNum") != null ?
                             redisTemplate.opsForHash().get(key, "totalNum").toString() : null;
-                    
-                    if (totalNumStr != null) {
-                        int redisTotalNum = Integer.parseInt(totalNumStr);
-                        
-                        // 如果Redis库存与数据库不一致，同步到数据库
-                        if (redisTotalNum != coupon.getTotalNum()) {
-                            coupon.setTotalNum(redisTotalNum);
-                            couponService.updateById(coupon);
-                            syncCount++;
+
+                    if (remainingStr != null) {
+                        int remaining = Integer.parseInt(remainingStr);
+                        // 由剩余库存反推已发放数量：issued = totalNum - remaining
+                        // 只同步 issue_num，绝不覆盖不可变的 total_num——
+                        // 否则 total_num 被收缩后 issue_num<total_num 乐观校验将导致后续发放全拒
+                        if (remaining >= 0 && remaining <= coupon.getTotalNum()) {
+                            int issued = coupon.getTotalNum() - remaining;
+                            if (issued != coupon.getIssueNum()) {
+                                couponService.lambdaUpdate()
+                                        .set(Coupon::getIssueNum, issued)
+                                        .eq(Coupon::getId, coupon.getId())
+                                        .update();
+                                syncCount++;
+                            }
                         }
                     }
                 } catch (Exception e) {

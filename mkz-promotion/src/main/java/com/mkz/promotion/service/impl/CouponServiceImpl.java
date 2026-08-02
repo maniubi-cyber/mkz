@@ -170,8 +170,9 @@ public class CouponServiceImpl extends ServiceImpl<CouponMapper, Coupon> impleme
 //            redisTemplate.opsForHash().put(key,"userLimit",String.valueOf(coupon.getUserLimit()));
 
             Map<String,String> map =new HashMap<>();
-            map.put("issueBeginTime",String.valueOf(DateUtils.toEpochMilli(now)));
-            map.put("issueEndTime",String.valueOf(DateUtils.toEpochMilli(dto.getIssueEndTime())));
+            // issueBeginTime/issueEndTime 统一存 epoch 秒（毫秒/1000），与 Lua 脚本 time()[1]（秒）口径一致
+            map.put("issueBeginTime",String.valueOf(DateUtils.toEpochMilli(now) / 1000));
+            map.put("issueEndTime",String.valueOf(DateUtils.toEpochMilli(dto.getIssueEndTime()) / 1000));
             map.put("totalNum",String.valueOf(coupon.getTotalNum()));
             map.put("userLimit",String.valueOf(coupon.getUserLimit()));
             redisTemplate.opsForHash().putAll(key,map);
@@ -331,10 +332,10 @@ public class CouponServiceImpl extends ServiceImpl<CouponMapper, Coupon> impleme
         redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
             StringRedisConnection src = (StringRedisConnection) connection;
             for (Coupon coupon : coupons) {
-                // 2.1.组织数据
+                // 2.1.组织数据（时间统一存 epoch 秒，与 Lua 脚本 time()[1] 口径一致）
                 Map<String, String> map = new HashMap<>(4);
-                map.put("issueBeginTime", String.valueOf(DateUtils.toEpochMilli(coupon.getIssueBeginTime())));
-                map.put("issueEndTime", String.valueOf(DateUtils.toEpochMilli(coupon.getIssueEndTime())));
+                map.put("issueBeginTime", String.valueOf(DateUtils.toEpochMilli(coupon.getIssueBeginTime()) / 1000));
+                map.put("issueEndTime", String.valueOf(DateUtils.toEpochMilli(coupon.getIssueEndTime()) / 1000));
                 map.put("totalNum", String.valueOf(coupon.getTotalNum()));
                 map.put("userLimit", String.valueOf(coupon.getUserLimit()));
                 // 2.2.写缓存

@@ -14,8 +14,11 @@ end
 if(tonumber(redis.call('time')[1]) > tonumber(redis.call('HGET', _k1, 'issueEndTime'))) then
     return "4"
 end
-if(tonumber(redis.call('HGET', _k1, 'userLimit')) < redis.call('HINCRBY', _k2, ARGV[3], 1)) then
+-- 先比较后自增：超限请求不得污染用户兑换计数（原子脚本内读-比-增无竞态）
+local userCount = tonumber(redis.call('HGET', _k2, ARGV[3]) or '0')
+if(tonumber(redis.call('HGET', _k1, 'userLimit')) < userCount + 1) then
     return "5"
 end
+redis.call('HINCRBY', _k2, ARGV[3], 1)
 redis.call('SETBIT', KEYS[1], ARGV[1], "1")
 return cid
