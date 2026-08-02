@@ -41,13 +41,13 @@ public class BusinessReportServiceImpl implements IBusinessReportService {
 
     @Override
     @Transactional
-    public void saveLogs(List<BusinessLog> list) {
+    public void saveLogs(List<BusinessLog> list, LocalDate reportDate) {
         if (list == null || list.isEmpty()) {
             return;
         }
 
-        // 获取统计日期（当天）
-        LocalDate reportDate = LocalDate.now();
+        // 统计日期取传入的 reportDate（数据所属日期），而非当天——
+        // 否则 Job 统计"昨日"数据却落"今日"日期，报表日期错位一天且同日重跑被去重跳过
         LocalDateTime reportDateTime = reportDate.atStartOfDay();
 
         String begin = reportDate.atStartOfDay().atZone(ZoneId.systemDefault()).toInstant().toString();

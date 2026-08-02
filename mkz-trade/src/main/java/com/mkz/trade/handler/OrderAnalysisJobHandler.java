@@ -51,10 +51,12 @@ public class OrderAnalysisJobHandler {
         LocalDateTime startTime;
         LocalDateTime endTime;
 
-        // 解析参数，无参数时使用默认区间（昨天 00:00:00 至昨天 23:59:59）
+        // 解析参数，无参数时使用默认区间（今天 00:00:00 至今天 23:59:59）
+        // 该任务喂给数据中心"今日订单额/单量"面板，必须统计今日数据，
+        // 否则今日看板滞后一天（此前默认昨日区间导致口径错位）
         if (StringUtils.isBlank(jobParam)) {
-            startTime = LocalDateTime.now().minusDays(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
-            endTime = LocalDateTime.now().minusDays(1).withHour(23).withMinute(59).withSecond(59).withNano(999999999);
+            startTime = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0);
+            endTime = LocalDateTime.now().withHour(23).withMinute(59).withSecond(59).withNano(999999999);
         } else {
             // 按参数格式解析（示例格式：start=2023-10-01&end=2023-10-02）
             Map<String, String> paramMap = Arrays.stream(jobParam.split("&"))

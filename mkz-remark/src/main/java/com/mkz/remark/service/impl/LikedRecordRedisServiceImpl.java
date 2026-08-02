@@ -94,19 +94,14 @@ public class LikedRecordRedisServiceImpl extends ServiceImpl<LikedRecordMapper, 
     private boolean unliked(LikeRecordFormDTO dto,Long userId) {
         String key = RedisConstants.LIKE_BIZ_KEY_PREFIX+dto.getBizId();
         Long result = redisTemplate.opsForSet().remove(key, userId.toString());
-        return result!=null&&result>0;
+        boolean removed = result!=null && result>0;
 
-        /**LikedRecord record = this.lambdaQuery()
+        // 同步删除持久化的点赞明细，防止 Redis 清空后点赞数据丢失（liked_record 有 biz_id+user_id 唯一索引）
+        this.lambdaUpdate()
                 .eq(LikedRecord::getUserId, userId)
                 .eq(LikedRecord::getBizId, dto.getBizId())
-                .one();
-        if(record==null){
-            //说明之前没点过赞
-            return false;
-        }
-
-     return removeById(record.getId());
-         **/
+                .remove();
+        return removed;
     }
 
     //点赞
@@ -114,25 +109,22 @@ public class LikedRecordRedisServiceImpl extends ServiceImpl<LikedRecordMapper, 
         //基于redis做点赞
         //拼接key
         String key = RedisConstants.LIKE_BIZ_KEY_PREFIX+dto.getBizId();
-//        redisTemplate.boundSetOps(key).add(userId.toString());
         Long result = redisTemplate.opsForSet().add(key, userId.toString());
-        return result!=null&&result>0;
+        boolean added = result!=null && result>0;
 
-        /**LikedRecord record = this.lambdaQuery()
-         .eq(LikedRecord::getUserId, userId)
-         .eq(LikedRecord::getBizId, dto.getBizId())
-         .one();
-         if(record!=null){
-         //说明之前点过赞
-         return false;
-         }
-
-         LikedRecord likedRecord =new LikedRecord();
-         likedRecord.setUserId(userId);
-         likedRecord.setBizId(dto.getBizId());
-         likedRecord.setBizType(dto.getBizType());
-         return this.save(likedRecord);
-         **/
+        // 同步持久化点赞明细，防止 Redis 清空后点赞数据丢失（先查后插，配合唯一索引防重）
+        LikedRecord record = this.lambdaQuery()
+                .eq(LikedRecord::getUserId, userId)
+                .eq(LikedRecord::getBizId, dto.getBizId())
+                .one();
+        if(record == null){
+            LikedRecord likedRecord = new LikedRecord();
+            likedRecord.setUserId(userId);
+            likedRecord.setBizId(dto.getBizId());
+            likedRecord.setBizType(dto.getBizType());
+            this.save(likedRecord);
+        }
+        return added;
     }
 
     //查询点赞状态

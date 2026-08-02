@@ -154,7 +154,8 @@ public class TimeHandlerUtils {
             timeDTO.setBegin(timeDTO.getTimeFormatter().format(minTime));
             //封装结束时间字符串
             timeDTO.setEnd(timeDTO.getTimeFormatter().format(maxTime));
-            timeDTO.setTargetDate(LocalDate.now());
+            // 目标日期应为昨日（统计的数据所属日期），此前误设为今天导致报表日期错位一天
+            timeDTO.setTargetDate(LocalDate.now().minusDays(1));
             return timeDTO;
         } catch (Exception e) {
             log.error("日期计算异常：{}", ExceptionsUtil.getStackTraceAsString(e));
