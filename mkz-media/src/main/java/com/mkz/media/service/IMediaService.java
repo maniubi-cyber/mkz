@@ -29,6 +29,11 @@ public interface IMediaService extends IService<Media> {
 
     void deleteMedia(String fileId);
 
+    /**
+     * 按媒资id删除：先删云端文件，再删本地记录
+     */
+    void deleteMediaById(Long id);
+
     VideoPlayVO getPlaySignatureByMediaId(Long mediaId);
 
     PageDTO<MediaVO> queryMediaPage(MediaQuery query);

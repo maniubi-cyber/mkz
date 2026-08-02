@@ -3,7 +3,7 @@ package com.mkz.course.config;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.LoadingCache;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
@@ -38,7 +38,7 @@ public class TwoLevelCacheManager {
     /** 未抢到锁时的短暂自旋睡眠（毫秒） */
     private static final long RETRY_SLEEP_MILLIS = 50L;
 
-    private final Cache<String, String> courseLocalCache;
+    private final LoadingCache<String, String> courseLocalCache;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
     private final RedissonClient redissonClient;
@@ -66,7 +66,10 @@ public class TwoLevelCacheManager {
     public <T> T get(String key, String redisKey, long expireTime, TimeUnit timeUnit,
                      Supplier<T> dbLoader, TypeReference<T> typeRef) {
         // 1. 先查Caffeine本地缓存（存的是JSON字符串）
-        String localJson = courseLocalCache.getIfPresent(key);
+        // 用 get(key) 而非 getIfPresent(key)：命中时若已超过 refreshAfterWrite 会触发 CacheLoader
+        // 异步从 Redis 刷新（reload 在 Redis 为空时保留旧值），使"异步刷新兜底"真实生效；
+        // 本地 miss 时也由 CacheLoader 先从 Redis 加载，避免直接穿透到 DB
+        String localJson = courseLocalCache.get(key);
         if (localJson != null) {
             log.debug("Caffeine本地缓存命中，key: {}", key);
             return deserialize(localJson, typeRef);

@@ -222,4 +222,15 @@ public class MediaServiceImpl extends ServiceImpl<MediaMapper, Media> implements
         // 2.删除本地信息
         remove(new LambdaQueryWrapper<Media>().eq(Media::getFileId, fileId));
     }
+
+    @Override
+    @Transactional
+    public void deleteMediaById(Long id) {
+        Media media = getById(id);
+        if (media == null) {
+            return;
+        }
+        // 复用"删云端 + 删本地"逻辑，避免云端视频残留
+        deleteMedia(media.getFileId());
+    }
 }

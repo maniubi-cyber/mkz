@@ -68,13 +68,16 @@ public class MediaController {
     @DeleteMapping("{mediaId}")
     public void deleteMedia(
             @ApiParam(value = "媒资id", example = "1", required = true) @PathVariable("mediaId") Long mediaId){
-        mediaService.removeById(mediaId);
+        // 先删云端文件，再删本地记录，防止云端视频残留
+        mediaService.deleteMediaById(mediaId);
     }
 
     @ApiOperation("批量删除媒资视频")
     @DeleteMapping
     public void deleteMedias(
             @ApiParam(value = "媒资id集合，例如1,2,3", required = true) @RequestParam("ids") List<Long> mediaIds){
-        mediaService.removeByIds(mediaIds);
+        for (Long mediaId : mediaIds) {
+            mediaService.deleteMediaById(mediaId);
+        }
     }
 }

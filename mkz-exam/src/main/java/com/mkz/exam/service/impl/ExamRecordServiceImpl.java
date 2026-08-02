@@ -254,6 +254,11 @@ public class ExamRecordServiceImpl extends ServiceImpl<ExamRecordMapper, ExamRec
             log.error("用户{}访问错误的考试记录{}", userId, recordId);
             throw new BadRequestException("错误的考试记录");
         }
+        // 幂等校验：已交卷则直接返回，防止重复提交重复插入考试明细/重复计分
+        if (Boolean.TRUE.equals(record.getFinished())) {
+            log.info("考试记录已交卷，忽略重复提交，recordId: {}", recordId);
+            return;
+        }
         // 2.自动批阅答案并保存答案信息
         // 2.1.获取答案信息
         List<ExamDetailDTO> examDetails = examCommitDTO.getExamDetails();

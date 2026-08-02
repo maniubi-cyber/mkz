@@ -42,12 +42,10 @@ spring:
           uri: lb://message-service
           predicates:
             - Path=/sms/**
-        - id: sms
+        - id: sms-ws
           uri: lb:ws://message-service  # 使用 ws 协议进行转发--私信websocket
           predicates:
-            - Path=/sms/**
-          filters:
-            - StripPrefix=1
+            - Path=/ws/**  # 后端消息服务 STOMP 端点为 /ws，按原样转发；避免与 HTTP 路由共用 /sms/** 与重复的 sms id
         - id: us
           uri: lb://user-service
           predicates:
