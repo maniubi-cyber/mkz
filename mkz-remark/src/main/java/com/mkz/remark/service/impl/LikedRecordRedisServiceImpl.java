@@ -2,7 +2,7 @@ package com.mkz.remark.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.mkz.api.dto.msg.LikedTimesDTO;
-import com.mkz.common.autoconfigure.mq.RabbitMqHelper;
+import com.mkz.common.autoconfigure.mq.RocketMqHelper;
 import com.mkz.common.constants.MqConstants;
 import com.mkz.common.utils.CollUtils;
 import com.mkz.common.utils.StringUtils;
@@ -41,7 +41,7 @@ import java.util.stream.IntStream;
 @RequiredArgsConstructor
 public class LikedRecordRedisServiceImpl extends ServiceImpl<LikedRecordMapper, LikedRecord> implements ILikedRecordService {
 
-    private final RabbitMqHelper rabbitMqHelper;
+    private final RocketMqHelper rocketMqHelper;
     private final StringRedisTemplate redisTemplate;
 
     //点赞或取消赞
@@ -183,20 +183,21 @@ public class LikedRecordRedisServiceImpl extends ServiceImpl<LikedRecordMapper, 
             if(StringUtils.isBlank(bizId)||likedTimes==null){
                 continue;
             }
-            //封装likedTimesDTO 消息数据
-            LikedTimesDTO msg = LikedTimesDTO.of(Long.valueOf(bizId), likedTimes.intValue());
+            //封装likedTimesDTO 消息数据（携带 bizType 供消费端路由更新对应业务表）
+            LikedTimesDTO msg = new LikedTimesDTO();
+            msg.setBizId(Long.valueOf(bizId));
+            msg.setLikedTimes(likedTimes.intValue());
+            msg.setBizType(bizType);
             list.add(msg);
 
         }
-        //发送消息到mq
+        //发送消息到mq（RocketMQ：tag=业务类型，keys=业务类型+业务id列表，作消费幂等键）
         if(CollUtils.isNotEmpty(list)){
             log.info("批量发送点赞消息 ：{}",list);
-            String routingKey = StringUtils.format(MqConstants.Key.LIKED_TIMES_KEY_TEMPLATE,bizType);
-            rabbitMqHelper.send(
-                    MqConstants.Exchange.LIKE_RECORD_EXCHANGE,
-                    routingKey,
-                    list
-            );
+            String keys = bizType + "-" + list.stream()
+                    .map(d -> String.valueOf(d.getBizId()))
+                    .collect(Collectors.joining(","));
+            rocketMqHelper.sendSync(MqConstants.Topic.LIKE_RECORD_TOPIC, bizType, keys, list);
         }
     }
 }

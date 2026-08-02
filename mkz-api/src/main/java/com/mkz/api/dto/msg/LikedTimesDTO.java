@@ -18,4 +18,8 @@ public class LikedTimesDTO {
      * 总的点赞次数
      */
     private Integer likedTimes;
+    /**
+     * 点赞业务类型（QA/NOTE/COMMENT），消费端据此路由更新对应业务表
+     */
+    private String bizType;
 }
