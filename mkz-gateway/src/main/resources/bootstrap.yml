@@ -117,3 +117,13 @@ spring:
 logging:
   level:
     com.mkz: debug
+# 网关限流（固定窗口，按 IP/用户 统计）
+mkz:
+  gateway:
+    rate-limit:
+      enabled: true
+      limit: 300        # 单个窗口内单维度最大请求数
+      window-seconds: 60 # 窗口时长（秒）
+      exclude-paths:     # 放行路径前缀
+        - /as/           # 认证（登录/刷新令牌等）
+        - /ws/           # websocket 握手

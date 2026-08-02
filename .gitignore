@@ -14,7 +14,8 @@ target
 .settings
 .project
 logs
-job
+# 注意：不要加裸 "job" 忽略项——会误伤 mkz-data 的 XXL-Job 业务目录（com/mkz/data/job）
+# 如需忽略指定目录请写完整路径
 
 # Python
 __pycache__/

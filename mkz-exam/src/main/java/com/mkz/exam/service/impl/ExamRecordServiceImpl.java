@@ -283,11 +283,16 @@ public class ExamRecordServiceImpl extends ServiceImpl<ExamRecordMapper, ExamRec
             d.setQuestionId(dto.getQuestionId());
             d.setAnswer(dto.getAnswer());
             d.setExamId(recordId);
-            // 5.2.批阅客观题
+            // 5.2.批阅
             // 获取问题
             QuestionDTO question = qMap.get(d.getQuestionId());
-            // 校验是否正确
-            if (question != null && StringUtils.equals(question.getAnswer(), d.getAnswer())) {
+            if (question != null && "5".equals(question.getType())) {
+                // 主观题（type=5）不做自动判分：标记待人工评阅，避免答案文本比对恒 0 分
+                d.setCorrect(null);
+                d.setScore(null);
+                d.setComment("待人工评阅");
+            } else if (question != null && StringUtils.equals(question.getAnswer(), d.getAnswer())) {
+                // 客观题自动判分
                 d.setCorrect(true);
                 d.setScore(question.getScore());
                 score += question.getScore();
