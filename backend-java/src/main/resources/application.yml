@@ -110,6 +110,10 @@ jwt:
 # AI/RAG 业务全部由 Python FastAPI 服务实现，Java 通过 RestTemplate 调用
 ai-service:
   base-url: ${AI_SERVICE_URL:http://localhost:8000}
+  # 内部调用共享密钥：与 Python 侧 AI_INTERNAL_SECRET 必须一致，
+  # Java 用其生成 HMAC-SHA256 签名头，Python 校验后才会受理请求。
+  # 生产环境务必通过环境变量覆盖默认值！
+  internal-secret: ${AI_INTERNAL_SECRET:dev-internal-secret-change-me}
   # Python 服务 API:
   #   POST /api/parse           - 文档解析（文本提取 → 切片 → 向量化）
   #   POST /api/vectors/delete  - 删除文档向量

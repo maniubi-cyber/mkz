@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
@@ -27,6 +27,7 @@ from app.api.routes import (
     documents_router,
 )
 from app.core.config import settings
+from app.core.internal_auth import verify_internal_signature
 
 # ============================================================
 # Environment
@@ -112,14 +113,18 @@ app.add_middleware(
 # Register Routers
 # ============================================================
 
-# Health check at root level
+# Health check at root level（不校验内部签名，供 docker-compose 健康检查与前端探活）
 app.include_router(create_health_router())
 
+# AI 业务路由统一要求内部签名校验：
+# 仅 Java 后端（携带 X-Internal-* 签名头）可调用，防内网伪造请求。
+internal_dependencies = [Depends(verify_internal_signature)]
+
 # AI document parsing routes: /ai/documents/*
-app.include_router(documents_router)
+app.include_router(documents_router, dependencies=internal_dependencies)
 
 # AI routes: /ai/search, /ai/chat, /ai/models
-app.include_router(ai_router)
+app.include_router(ai_router, dependencies=internal_dependencies)
 
 # ============================================================
 # Root Redirect

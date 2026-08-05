@@ -201,6 +201,20 @@ class Settings(BaseSettings):
     SEARCH_TIMEOUT: int = Field(default=30, description="搜索超时（秒）")
     CHAT_TIMEOUT: int = Field(default=120, description="对话超时（秒）")
 
+    # ---- Internal Auth (Java 后端内部调用鉴权) ----
+    AI_INTERNAL_SECRET: str = Field(
+        default="dev-internal-secret-change-me",
+        description="内部调用共享密钥，与 Java 侧 ai.internal-secret 必须一致"
+    )
+    AI_INTERNAL_ENABLED: bool = Field(
+        default=True,
+        description="是否启用内部签名校验（测试环境可关闭）"
+    )
+    AI_INTERNAL_TOLERANCE_SECONDS: int = Field(
+        default=300,
+        description="签名时间戳容差（秒），容忍两端时钟偏差"
+    )
+
     # ---- Connection Pool ----
     HTTP_POOL_MAX_SIZE: int = Field(default=20, description="HTTP 连接池最大连接数")
     HTTP_POOL_KEEP_ALIVE: int = Field(default=30, description="HTTP Keep-Alive 秒数")
