@@ -19,6 +19,7 @@ import com.example.rag.mapper.DocumentVersionHistoryMapper;
 import com.example.rag.mapper.KnowledgeBaseMapper;
 import com.example.rag.service.DocumentExportService;
 import com.example.rag.service.DocumentParseService;
+import com.example.rag.service.DocumentSearchService;
 import com.example.rag.service.DocumentService;
 import com.example.rag.service.MinioService;
 import com.example.rag.service.PermissionService;
@@ -86,6 +87,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final DocumentParseService documentParseService;
     private final DocumentExportService documentExportService;
     private final PermissionService permissionService;
+    private final DocumentSearchService documentSearchService;
     private final StringRedisTemplate redisTemplate;
 
     // ==================== 常量 ====================
@@ -184,6 +186,13 @@ public class DocumentServiceImpl implements DocumentService {
         // ===== 9. 异步触发 Python 解析 =====
         documentParseService.triggerParseAsync(doc.getId());
 
+        // ===== 10. 异步写入 ES 全文索引（失败不影响主流程） =====
+        try {
+            documentSearchService.indexDocument(doc.getId());
+        } catch (Exception e) {
+            log.warn("ES 索引写入失败（忽略）: docId={}", doc.getId(), e);
+        }
+
         return buildResponse(doc);
     }
 
@@ -267,6 +276,13 @@ public class DocumentServiceImpl implements DocumentService {
         // ===== 4. Redis 缓存失效 =====
         evictDocumentCache(docId);
         evictKbDocListCache(doc.getKbId());
+
+        // ===== 4.1 删除 ES 全文索引（失败不影响主流程） =====
+        try {
+            documentSearchService.deleteDocumentIndex(docId);
+        } catch (Exception e) {
+            log.warn("ES 索引删除失败（忽略）: docId={}", docId, e);
+        }
 
         // ===== 5. 异步清理 MinIO + 切片 + 向量库 =====
         asyncCleanup(doc);
@@ -367,6 +383,13 @@ public class DocumentServiceImpl implements DocumentService {
 
         // ===== 5. 失效文档缓存，保证后续读取拿到最新正文 =====
         evictDocumentCache(docId);
+
+        // ===== 6. 重建 ES 全文索引（正文已变更，失败不影响主流程） =====
+        try {
+            documentSearchService.indexDocument(docId);
+        } catch (Exception e) {
+            log.warn("ES 索引重建失败（忽略）: docId={}", docId, e);
+        }
 
         log.info("文档协同内容已保存: docId={}, editorId={}, length={}, baseRevision={}",
                 docId, currentUserId, content != null ? content.length() : 0, baseRevision);

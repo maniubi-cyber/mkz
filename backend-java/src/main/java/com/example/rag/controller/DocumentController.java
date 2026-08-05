@@ -4,8 +4,11 @@ import com.example.rag.common.Result;
 import com.example.rag.dto.request.DocumentContentUpdateRequest;
 import com.example.rag.dto.response.DocumentDetailResponse;
 import com.example.rag.dto.response.DocumentResponse;
+import com.example.rag.dto.response.DocumentSearchResponse;
 import com.example.rag.dto.response.PageResponse;
+import com.example.rag.common.SecurityUtils;
 import com.example.rag.service.DocumentAsyncService;
+import com.example.rag.service.DocumentSearchService;
 import com.example.rag.service.DocumentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -16,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 
 /**
@@ -35,6 +39,7 @@ public class DocumentController {
 
     private final DocumentService documentService;
     private final DocumentAsyncService documentAsyncService;
+    private final DocumentSearchService documentSearchService;
 
     // ==================== 上传文档 ====================
 
@@ -104,6 +109,45 @@ public class DocumentController {
 
         PageResponse<DocumentResponse> docs = documentService.listByKb(kbId, page, size, keyword);
         return Result.success(docs);
+    }
+
+    // ==================== 全文搜索 ====================
+
+    @Operation(
+            summary = "全文搜索文档（ES + IK 分词）",
+            description = """
+                    基于 Elasticsearch 的文档级全文搜索（标题/正文关键词匹配 + 高亮）。
+                    权限规则与列表一致：ADMIN 全量，普通用户仅 PUBLIC / 自己 / 同组织 ORG 文档。
+                    """
+    )
+    @GetMapping("/search")
+    public Result<PageResponse<DocumentSearchResponse>> search(
+            @Parameter(description = "搜索关键词", required = true, example = "知识库")
+            @RequestParam("keyword") @NotNull String keyword,
+
+            @Parameter(description = "知识库 ID（可选，限定搜索范围）", example = "1")
+            @RequestParam(value = "kbId", required = false) Long kbId,
+
+            @Parameter(description = "页码（从 1 开始）", example = "1")
+            @RequestParam(value = "page", defaultValue = "1") int page,
+
+            @Parameter(description = "每页条数", example = "20")
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+
+        Long userId = SecurityUtils.isAdmin() ? null : SecurityUtils.getCurrentUserId();
+        Long orgId = SecurityUtils.getCurrentUserOrgId();
+
+        List<DocumentSearchResponse> hits = documentSearchService.search(
+                keyword, kbId, page, size, userId, orgId);
+        long total = documentSearchService.countSearch(keyword, kbId, userId, orgId);
+
+        return Result.success(PageResponse.<DocumentSearchResponse>builder()
+                .page(page)
+                .size(size)
+                .total(total)
+                .pages(total > 0 ? (total + size - 1) / size : 0)
+                .records(hits)
+                .build());
     }
 
     // ==================== 获取文档详情 ====================

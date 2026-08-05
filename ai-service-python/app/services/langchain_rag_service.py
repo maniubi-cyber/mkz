@@ -376,6 +376,15 @@ class LangChainRAGService:
         self._vector_store = None
         self._embedder = None
         self._metadata_extractor = None
+        self._es_bm25 = None
+
+    @property
+    def es_bm25(self):
+        """懒加载 ES BM25 客户端（写入/删除/检索双路中的关键词路）。"""
+        if self._es_bm25 is None:
+            from app.services.es_bm25 import get_es_bm25_client
+            self._es_bm25 = get_es_bm25_client()
+        return self._es_bm25
 
     @property
     def vector_store(self):
@@ -455,9 +464,24 @@ class LangChainRAGService:
             metadata_list=child_metadata_list,
         )
 
+        # 5. 子块同步写入 ES BM25 索引（双路召回关键词路）
+        #    ES 不可用 / ES_BM25_ENABLED=False 时静默降级为 0，不阻塞主流程。
+        es_indexed = self.es_bm25.index_child_chunks(
+            kb_id=kb_id,
+            document_id=document_id,
+            child_chunks=child_chunks,
+            file_name=file_name,
+            owner_id=owner_id,
+            visibility=visibility,
+            org_id=org_id if org_id else 0,
+            doc_version=doc_version,
+            metadata_list=child_metadata_list,
+        )
+
         return {
             "parent_chunks": len(parent_chunks),
             "child_chunks": len(child_chunks),
+            "es_bm25_indexed": es_indexed,
         }
 
     def rebuild_document_incremental(
@@ -482,8 +506,12 @@ class LangChainRAGService:
 
         # 1. 删除旧版本子块（按 doc_version 过滤，不影响并发其他版本写入）
         deleted = 0
+        es_deleted = 0
         if old_version > 0:
             deleted = self.vector_store.delete_by_version(
+                kb_id=kb_id, document_id=document_id, old_version=old_version
+            )
+            es_deleted = self.es_bm25.delete_by_version(
                 kb_id=kb_id, document_id=document_id, old_version=old_version
             )
 
@@ -502,6 +530,7 @@ class LangChainRAGService:
         result["old_version"] = old_version
         result["new_version"] = new_version
         result["deleted_old_child_chunks"] = deleted
+        result["deleted_old_es_chunks"] = es_deleted
         return result
 
     def search(
@@ -572,13 +601,15 @@ class LangChainRAGService:
         return results[:top_k]
 
     def delete_document(self, kb_id: int, document_id: int) -> dict:
-        """删除文档的索引数据（Qdrant 子块 + Redis 父块）。"""
+        """删除文档的索引数据（Qdrant 子块 + Redis 父块 + ES BM25 子块）。"""
         deleted_vectors = self.vector_store.delete_by_document_id(kb_id, document_id)
         deleted_parents = self.parent_store.delete_by_document_id(kb_id, document_id)
+        deleted_es = self.es_bm25.delete_by_document_id(kb_id, document_id)
 
         return {
             "deleted_child_vectors": deleted_vectors,
             "deleted_parent_chunks": deleted_parents,
+            "deleted_es_chunks": deleted_es,
         }
 
 

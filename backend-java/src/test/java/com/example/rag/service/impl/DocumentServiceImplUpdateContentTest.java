@@ -11,6 +11,7 @@ import com.example.rag.mapper.KnowledgeBaseMapper;
 import com.example.rag.common.SecurityUtils;
 import com.example.rag.service.DocumentExportService;
 import com.example.rag.service.DocumentParseService;
+import com.example.rag.service.DocumentSearchService;
 import com.example.rag.service.MinioService;
 import com.example.rag.service.PermissionService;
 import com.example.rag.common.FileUploadValidator;
@@ -64,9 +65,11 @@ class DocumentServiceImplUpdateContentTest {
         FileUploadValidator validator = mock(FileUploadValidator.class);
         DocumentParseService parse = mock(DocumentParseService.class);
         DocumentExportService export = mock(DocumentExportService.class);
+        DocumentSearchService searchService = mock(DocumentSearchService.class);
         return new DocumentServiceImpl(
                 docMapper, chunkMapper, kbMapper, vhMapper,
-                minio, validator, parse, export, permissionService, redis);
+                minio, validator, parse, export, permissionService,
+                searchService, redis);
     }
 
     private Document privateDoc(Long ownerId, Integer version) {
