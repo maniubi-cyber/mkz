@@ -129,12 +129,16 @@ class SearchRequest(BaseModel):
         description="返回最相关的 top-k 个片段",
         examples=[5],
     )
-    similarity_threshold: float = Field(
-        default=0.35,
+    similarity_threshold: float | None = Field(
+        default=None,
         ge=0.0,
         le=1.0,
-        description="RRF 融合分数阈值（低于此值的结果被丢弃）",
-        examples=[0.35],
+        description=(
+            "RRF 融合分数阈值（低于此值的结果被丢弃）。"
+            "不传时使用服务端配置 RAG_SIMILARITY_THRESHOLD。"
+            "注意：RRF 分数量纲为 1/(60+rank)，合理范围约 0~0.016"
+        ),
+        examples=[0.01],
     )
     hybrid_alpha: float = Field(
         default=0.5,
@@ -163,6 +167,14 @@ class SearchRequest(BaseModel):
         ge=0,
         description="用户所属组织 ID（0 = 无组织）",
         examples=[5],
+    )
+    enable_query_rewrite: bool = Field(
+        default=True,
+        description=(
+            "检索前是否用 LLM 轻量改写 query（指代消解 + 口语化修正）。"
+            "关闭后使用原始 query 直接检索，可用于对比改写收益或降低时延。"
+        ),
+        examples=[True],
     )
 
 

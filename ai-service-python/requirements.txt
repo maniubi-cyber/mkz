@@ -16,13 +16,21 @@ qdrant-client>=1.10.0
 openai>=1.35.0
 
 # LangChain (RAG Framework)
-langchain>=0.2.0
-langchain-community>=0.2.0
+# 注意：必须锁定 <0.3.0 上界！langchain-community 0.3.x 把 ChatVertexAI 从
+# chat_models.vertexai 移走，而 ragas 0.2.x 在模块加载时仍
+# `from langchain_community.chat_models.vertexai import ChatVertexAI`，
+# 浮点版本会解析到 0.3.x → import ragas 直接 ModuleNotFoundError（评测模块静默降级）。
+langchain>=0.2.0,<0.3.0
+langchain-community>=0.2.0,<0.3.0
 langchain-openai>=0.1.0
 
 # RAG Evaluation
-ragas>=0.2.0
-langfuse>=2.0.0
+# ragas 同样锁 <0.3.0，避免升级到破坏 0.2 API（EvaluationDataset/类式 metric/LangchainLLMWrapper）的版本。
+ragas>=0.2.0,<0.3.0
+# langfuse 锁 <5：无上界会解析到 4.x（v4，OTEL 化）。evaluator 的
+# `hasattr(langfuse, "start_as_current_span")` 分支（v3 路径）虽兼容 v4，
+# 但钉死 <5 可把评测跟踪行为稳定在 2026-08-01 实测通过的范围（langfuse 4.14.2）。
+langfuse>=2.0.0,<5
 datasets>=2.14.0
 
 # Redis (子切块缓存)

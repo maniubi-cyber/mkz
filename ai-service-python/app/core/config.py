@@ -157,8 +157,13 @@ class Settings(BaseSettings):
     # ---- RAG Parameters ----
     RAG_TOP_K: int = Field(default=5, description="检索返回的 top-k 片段数")
     RAG_SIMILARITY_THRESHOLD: float = Field(
-        default=0.35,
-        description="相似度阈值（低于此值的结果被过滤）"
+        default=0.0,
+        description=(
+            "RRF 融合分数阈值（低于此值的结果被过滤）。"
+            "RRF 分数 = 权重/(60+rank)，是排序值而非绝对相似度："
+            "双路命中 rank-1 约 0.016，单路命中 rank-1 约 0.008，"
+            "因此默认 0.0（仅靠 top_k 截断），调高需谨慎防误伤"
+        )
     )
     RAG_RERANK_ENABLED: bool = Field(
         default=True,

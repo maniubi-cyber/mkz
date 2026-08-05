@@ -107,7 +107,8 @@ class SearchResult(BaseModel):
     Example::
 
         {
-          "query": "什么是 RAG？",
+          "query": "它的性能怎么样？",
+          "rewritten_query": "RAG 系统的性能怎么样？",
           "kb_id": 1,
           "total_hits": 25,
           "top_k": 5,
@@ -117,6 +118,10 @@ class SearchResult(BaseModel):
     """
 
     query: str = Field(..., description="原始搜索查询")
+    rewritten_query: Optional[str] = Field(
+        default=None,
+        description="LLM 改写后实际用于检索的 query（未改写或改写无变化时为 null）",
+    )
     kb_id: int = Field(..., description="搜索的知识库 ID")
     total_hits: int = Field(
         default=0,

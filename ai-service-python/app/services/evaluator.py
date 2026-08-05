@@ -33,20 +33,56 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# ------------------------------------------------------------------
+# RAGAS 导入
+#
+# ragas 的 API 在 0.1 → 0.2 之间有破坏性变更，这里做版本自适应：
+#   - 0.2+ : EvaluationDataset + 类式 metric（Faithfulness()）+ LangchainLLMWrapper
+#   - 0.1.x: datasets.Dataset + 小写 metric 单例（faithfulness）
+#
+# 注意：绝对不要在这里导入用不到的符号（例如已被移除的 ragas.chains），
+# 否则一个 ImportError 会让整个评测模块静默降级为「不可用」，
+# 而调用方只会看到分数恒为 0，很难察觉。
+# ------------------------------------------------------------------
+RAGAS_AVAILABLE = False
+RAGAS_API = None  # "v2" | "v1"
+
 try:
     from ragas import evaluate as ragas_evaluate
-    from ragas.metrics import faithfulness, answer_relevancy, context_precision
-    from ragas.llms import LangchainLLM
-    from ragas.chains import FaithfulnessQuestionGenerator
+
+    try:
+        # ragas >= 0.2 的推荐用法
+        from ragas import EvaluationDataset
+        from ragas.llms import LangchainLLMWrapper
+        from ragas.metrics import (
+            Faithfulness,
+            ResponseRelevancy,
+            LLMContextPrecisionWithoutReference,
+        )
+
+        RAGAS_API = "v2"
+    except ImportError:
+        # 回退到 0.1.x 的小写单例写法
+        from ragas.metrics import (  # type: ignore[no-redef]
+            faithfulness,
+            answer_relevancy,
+            context_precision,
+        )
+
+        RAGAS_API = "v1"
 
     RAGAS_AVAILABLE = True
-except ImportError:
-    RAGAS_AVAILABLE = False
-    logger.warning("ragas not installed. Install with: pip install ragas")
+    logger.info("RAGAS loaded (api=%s)", RAGAS_API)
+except ImportError as exc:
+    logger.warning(
+        "ragas not available (%s). Install with: pip install 'ragas>=0.2.0'", exc
+    )
 
+# ------------------------------------------------------------------
+# Langfuse 导入（v2 与 v3 的 trace API 完全不同，运行时再分支）
+# ------------------------------------------------------------------
 try:
     from langfuse import Langfuse
-    from langfuse.decorators import observe
 
     LANGFUSE_AVAILABLE = True
 except ImportError:
@@ -100,20 +136,148 @@ class RAGEvaluator:
 
     def __init__(self) -> None:
         self._llm_client = None
+        self._embeddings = None
         self._langfuse: Optional["Langfuse"] = None
 
     def _get_llm(self):
-        """Get the LLM for RAGAS evaluation."""
+        """
+        Build the evaluator LLM.
+
+        ragas >= 0.2 requires the LLM to be wrapped in ``LangchainLLMWrapper``;
+        0.1.x accepts a raw LangChain chat model.
+        """
         from langchain_openai import ChatOpenAI
 
         if self._llm_client is None:
-            self._llm_client = ChatOpenAI(
+            base_llm = ChatOpenAI(
                 model=settings.LLM_MODEL_NAME,
                 openai_api_key=settings.LLM_API_KEY,
                 openai_api_base=settings.LLM_BASE_URL,
                 temperature=0,
             )
+            if RAGAS_API == "v2":
+                self._llm_client = LangchainLLMWrapper(base_llm)
+            else:
+                self._llm_client = base_llm
         return self._llm_client
+
+    def _get_embeddings(self):
+        """
+        Build the evaluator embeddings.
+
+        ``answer_relevancy`` / ``ResponseRelevancy`` needs embeddings to compare the
+        generated answer against questions reverse-engineered from it. We reuse the
+        project's already-loaded sentence-transformers model instead of pulling a
+        second one (and instead of silently defaulting to OpenAI embeddings, which
+        would fail against a DeepSeek-compatible endpoint).
+        """
+        if self._embeddings is not None:
+            return self._embeddings
+
+        try:
+            from langchain_core.embeddings import Embeddings
+
+            from app.services.embedder import get_embedder
+
+            class _ProjectEmbeddings(Embeddings):
+                """Adapter exposing the project embedder via the LangChain interface."""
+
+                def embed_documents(self, texts: list[str]) -> list[list[float]]:
+                    return get_embedder().embed(texts).tolist()
+
+                def embed_query(self, text: str) -> list[float]:
+                    return get_embedder().embed_query(text).tolist()
+
+            adapter = _ProjectEmbeddings()
+
+            if RAGAS_API == "v2":
+                from ragas.embeddings import LangchainEmbeddingsWrapper
+
+                self._embeddings = LangchainEmbeddingsWrapper(adapter)
+            else:
+                self._embeddings = adapter
+        except Exception as exc:  # pragma: no cover - depends on optional deps
+            logger.warning(
+                "Failed to build evaluator embeddings (%s); "
+                "answer_relevancy may be skipped by ragas",
+                exc,
+            )
+            self._embeddings = None
+
+        return self._embeddings
+
+    def _build_metrics(self) -> list:
+        """Instantiate the three RAG metrics for the detected ragas API."""
+        if RAGAS_API == "v2":
+            return [
+                Faithfulness(),
+                ResponseRelevancy(),
+                LLMContextPrecisionWithoutReference(),
+            ]
+        return [faithfulness, answer_relevancy, context_precision]
+
+    def _build_dataset(self, question: str, contexts: list[str], answer: str):
+        """Build the evaluation dataset in the shape the installed ragas expects."""
+        if RAGAS_API == "v2":
+            return EvaluationDataset.from_list(
+                [
+                    {
+                        "user_input": question,
+                        "retrieved_contexts": contexts,
+                        "response": answer,
+                    }
+                ]
+            )
+
+        from datasets import Dataset
+
+        # NOTE: contexts must be a list-of-lists (one list per sample),
+        # otherwise ragas silently produces NaN scores.
+        return Dataset.from_dict(
+            {
+                "question": [question],
+                "contexts": [contexts],
+                "answer": [answer],
+            }
+        )
+
+    @staticmethod
+    def _extract_score(evaluation, *names: str) -> float:
+        """
+        Pull a single metric score out of a ragas result.
+
+        The return shape differs across versions: it may be a scalar, a list of
+        per-sample scores, or a nested dict. Metric keys were also renamed
+        (``answer_relevancy`` → ``semantic_similarity``/``answer_relevancy``,
+        ``context_precision`` → ``llm_context_precision_without_reference``),
+        so several candidate names are tried before giving up.
+        """
+        for name in names:
+            try:
+                value = evaluation[name]
+            except (KeyError, TypeError):
+                continue
+
+            # per-sample list / numpy array
+            if isinstance(value, (list, tuple)):
+                numeric = [v for v in value if isinstance(v, (int, float))]
+                if numeric:
+                    return float(sum(numeric) / len(numeric))
+                continue
+
+            if hasattr(value, "mean"):  # numpy array / pandas Series
+                try:
+                    return float(value.mean())
+                except Exception:
+                    pass
+
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                continue
+
+        logger.warning("Metric not found in ragas result, tried: %s", names)
+        return 0.0
 
     def _get_langfuse(self) -> Optional["Langfuse"]:
         """Get Langfuse client if configured."""
@@ -162,31 +326,40 @@ class RAGEvaluator:
 
         if not RAGAS_AVAILABLE:
             logger.warning("RAGAS not available, skipping evaluation")
+            result.details["skipped"] = "ragas_not_installed"
+            return result
+
+        if not contexts:
+            # 没有召回内容时 faithfulness / context_precision 无意义，
+            # 直接跳过，避免把 0 分误当作「模型幻觉严重」。
+            logger.warning("Empty contexts, skipping evaluation")
+            result.details["skipped"] = "empty_contexts"
             return result
 
         try:
-            # Build dataset for RAGAS
-            from datasets import Dataset
+            dataset = self._build_dataset(question, contexts, answer)
 
-            data = {
-                "question": [question],
-                "contexts": [contexts],
-                "answer": [answer],
+            logger.info("Running RAGAS evaluation (api=%s)...", RAGAS_API)
+            eval_kwargs = {
+                "metrics": self._build_metrics(),
+                "llm": self._get_llm(),
             }
-            dataset = Dataset.from_dict(data)
+            embeddings = self._get_embeddings()
+            if embeddings is not None:
+                eval_kwargs["embeddings"] = embeddings
 
-            # Run evaluation
-            logger.info("Running RAGAS evaluation...")
-            evaluation = ragas_evaluate(
-                dataset,
-                metrics=[faithfulness, answer_relevancy, context_precision],
-                llm=self._get_llm(),
+            evaluation = ragas_evaluate(dataset, **eval_kwargs)
+
+            # 指标键名在不同版本间被重命名过，逐个候选尝试
+            result.faithfulness = self._extract_score(evaluation, "faithfulness")
+            result.answer_relevancy = self._extract_score(
+                evaluation, "answer_relevancy", "response_relevancy"
             )
-
-            # Extract scores
-            result.faithfulness = float(evaluation["faithfulness"])
-            result.answer_relevancy = float(evaluation["answer_relevancy"])
-            result.context_precision = float(evaluation["context_precision"])
+            result.context_precision = self._extract_score(
+                evaluation,
+                "context_precision",
+                "llm_context_precision_without_reference",
+            )
             result.overall_score = (
                 result.faithfulness * 0.4
                 + result.answer_relevancy * 0.3
@@ -233,43 +406,102 @@ class RAGEvaluator:
         return results
 
     def _track_in_langfuse(self, result: EvaluationResult) -> None:
-        """Track evaluation result in Langfuse for visualization."""
+        """
+        Track the evaluation result in Langfuse.
+
+        The Langfuse Python SDK changed shape between major versions:
+          - v2: ``langfuse.trace(...)`` returns a StatefulTraceClient (NOT a context
+            manager — using ``with`` raises ``AttributeError: __enter__``).
+          - v3: traces are OTEL spans, created via ``start_as_current_span(...)``,
+            and scores are attached with ``create_score``/``score``.
+          - v4: ``trace()`` 与 ``start_as_current_span()`` 均已移除；改为
+            ``start_as_current_observation(...)``（OTEL 上下文管理器）+ ``score_current_trace``。
+            实测 langfuse 4.14.2 实例只有 observation 系列 API（2026-08-01）。
+
+        按实例能力探测分支（v4 优先），任何一条路径失败都不会中断评测本身。
+        """
         langfuse = self._get_langfuse()
         if not langfuse:
             return
 
+        scores = {
+            "faithfulness": result.faithfulness,
+            "answer_relevancy": result.answer_relevancy,
+            "context_precision": result.context_precision,
+            "overall_score": result.overall_score,
+        }
+
         try:
-            with langfuse.trace(
-                name="rag-evaluation",
-                trace_id=f"eval-{result.question[:20]}-{id(result)}",
-                user_id="system",
-            ) as trace:
-                trace.update(
-                    output=result.to_dict(),
-                    metadata={
-                        "faithfulness": result.faithfulness,
-                        "answer_relevancy": result.answer_relevancy,
-                        "context_precision": result.context_precision,
-                        "overall_score": result.overall_score,
-                    },
-                )
+            if hasattr(langfuse, "start_as_current_observation"):
+                self._track_v4(langfuse, result, scores)
+            elif hasattr(langfuse, "start_as_current_span"):
+                self._track_v3(langfuse, result, scores)
+            else:
+                self._track_v2(langfuse, result, scores)
 
-                # Add generation for the answer
-                trace.generation(
-                    name="rag-answer",
-                    model=settings.LLM_MODEL_NAME,
-                    input=[{"role": "user", "content": result.question}],
-                    output=result.answer,
-                    metadata={
-                        "faithfulness": result.faithfulness,
-                        "answer_relevancy": result.answer_relevancy,
-                        "context_precision": result.context_precision,
-                    },
-                )
+            # 尽量刷盘：评测通常在短生命周期的请求里跑完，
+            # 不 flush 可能导致进程退出前数据还在缓冲区里。
+            if hasattr(langfuse, "flush"):
+                langfuse.flush()
 
-            logger.info("Tracked evaluation in Langfuse: overall=%.4f", result.overall_score)
+            logger.info(
+                "Tracked evaluation in Langfuse: overall=%.4f", result.overall_score
+            )
         except Exception as e:
             logger.warning("Failed to track in Langfuse: %s", e)
+
+    @staticmethod
+    def _track_v4(langfuse, result: EvaluationResult, scores: dict) -> None:
+        """Langfuse v4 (OTEL-based) tracking.
+
+        v4 移除了 v2 的 ``trace()`` 与 v3 的 ``start_as_current_span()``，
+        改为 ``create_trace_id()`` + ``start_as_current_observation(...)``
+        （上下文管理器）+ ``score_current_trace(...)``。参数均为 keyword-only。
+        """
+        trace_id = langfuse.create_trace_id()
+        with langfuse.start_as_current_observation(
+            name="rag-evaluation",
+            as_type="span",
+            input={"question": result.question},
+            output=result.to_dict(),
+            metadata=scores,
+        ):
+            for name, value in scores.items():
+                langfuse.score_current_trace(name=name, value=float(value))
+        logger.info("Tracked evaluation in Langfuse v4: trace_id=%s", trace_id)
+
+    @staticmethod
+    def _track_v3(langfuse, result: EvaluationResult, scores: dict) -> None:
+        """Langfuse v3 (OTEL-based) tracking."""
+        with langfuse.start_as_current_span(name="rag-evaluation") as span:
+            span.update_trace(
+                input={"question": result.question},
+                output=result.to_dict(),
+                user_id="system",
+                metadata=scores,
+            )
+            for name, value in scores.items():
+                langfuse.create_score(name=name, value=float(value))
+
+    @staticmethod
+    def _track_v2(langfuse, result: EvaluationResult, scores: dict) -> None:
+        """Langfuse v2 (StatefulClient) tracking."""
+        trace = langfuse.trace(
+            name="rag-evaluation",
+            input={"question": result.question},
+            output=result.to_dict(),
+            user_id="system",
+            metadata=scores,
+        )
+        trace.generation(
+            name="rag-answer",
+            model=settings.LLM_MODEL_NAME,
+            input=[{"role": "user", "content": result.question}],
+            output=result.answer,
+            metadata=scores,
+        )
+        for name, value in scores.items():
+            trace.score(name=name, value=float(value))
 
     def generate_report(self, results: list[EvaluationResult]) -> dict:
         """

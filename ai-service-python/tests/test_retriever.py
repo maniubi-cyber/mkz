@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.core.config import settings
 from app.services.retriever import HybridRetriever, ScoredChunk
 
 
@@ -67,6 +68,11 @@ def _vec_result(chunk_id: str, content: str, similarity: float,
     }
 
 
+def _bm25_result(chunk_id: str, content: str) -> dict:
+    """Build a synthetic BM25 result dict matching ES BM25 client output."""
+    return {"id": chunk_id, "content": content, "metadata": {}}
+
+
 # ============================================================
 # Tests — RRF Fusion
 # ============================================================
@@ -99,15 +105,13 @@ class TestRRFFusion:
 
     def test_rrf_bm25_only(self):
         """alpha=0.0 → only BM25 contributes."""
-        from app.services.chunker import Chunk
-
         retriever = HybridRetriever()
-        chunks = [
-            (Chunk(index=0, content="A"), 0.9),
-            (Chunk(index=1, content="B"), 0.7),
-            (Chunk(index=2, content="C"), 0.5),
+        bm25 = [
+            _bm25_result("bm25_0", "A"),
+            _bm25_result("bm25_1", "B"),
+            _bm25_result("bm25_2", "C"),
         ]
-        result = retriever._rrf_fusion([], chunks, alpha=0.0)
+        result = retriever._rrf_fusion([], bm25, alpha=0.0)
         assert len(result) == 3
         assert result[0].chunk_id == "bm25_0"
 
@@ -115,8 +119,7 @@ class TestRRFFusion:
         """alpha=0.5 → both sources contribute to final score."""
         retriever = HybridRetriever()
         vec = [_vec_result("v0", "向量结果", 0.95)]
-        from app.services.chunker import Chunk
-        bm25 = [(Chunk(index=0, content="关键词结果"), 0.8)]
+        bm25 = [_bm25_result("bm25_0", "关键词结果")]
 
         result = retriever._rrf_fusion(vec, bm25, alpha=0.5)
         assert len(result) >= 1  # at least one result
@@ -145,9 +148,8 @@ class TestRRFFusion:
         """Same chunk appearing in both lists gets RRF scores summed."""
         retriever = HybridRetriever()
         vec = [_vec_result("shared", "共享内容", 0.9)]
-        from app.services.chunker import Chunk
         # BM25 can't have the same ID, so dedup only works within same source
-        bm25 = [(Chunk(index=0, content="共享内容"), 0.8)]
+        bm25 = [_bm25_result("bm25_0", "共享内容")]
 
         result = retriever._rrf_fusion(vec, bm25, alpha=0.5)
         ids = [c.chunk_id for c in result]
@@ -166,143 +168,89 @@ class TestRRFFusion:
 
 
 # ============================================================
-# Tests — Permission Filtering
+# Tests — Threshold dimension (RRF score vs similarity_threshold)
 # ============================================================
 
-class TestPermissionFilter:
-    """Visibility-based permission filtering tests."""
+class TestThresholdCompatibility:
+    """RRF 融合分数量纲与阈值默认值的兼容性（回归防护）。"""
 
-    def test_admin_sees_all(self):
-        """ADMIN role bypasses all permission checks."""
+    def test_default_threshold_allows_rank1_results(self):
+        """双路命中的 rank-1 结果（分数≈0.016）必须通过默认阈值。"""
         retriever = HybridRetriever()
-        chunks = [
-            _sc(visibility="PRIVATE", owner_id=99),  # not the user
-            _sc(visibility="PRIVATE", owner_id=100),
-            _sc(visibility="ORG", org_id=999),       # different org
-        ]
-        result = retriever._apply_permission_filter(
-            chunks, user_id=10, role="ADMIN", org_id=5,
-        )
-        assert len(result) == 3
+        vec = [_vec_result("c0", "内容A", 0.9)]
+        bm25 = [_bm25_result("bm25_0", "内容A")]
+        fused = retriever._rrf_fusion(vec, bm25, alpha=0.5)
+        assert fused, "双路命中 rank-1 应有融合结果"
 
-    def test_owner_sees_own_private(self):
-        """Owner sees their own PRIVATE content."""
-        retriever = HybridRetriever()
-        chunks = [
-            _sc(visibility="PRIVATE", owner_id=10),   # owner
-            _sc(visibility="PRIVATE", owner_id=99),   # not owner
-        ]
-        result = retriever._apply_permission_filter(
-            chunks, user_id=10, role="USER", org_id=5,
+        threshold = settings.RAG_SIMILARITY_THRESHOLD
+        assert threshold <= 0.02, (
+            f"默认阈值 {threshold} 必须匹配 RRF 量纲（最高约 0.0164），否则检索恒空"
         )
-        assert len(result) == 1
-        assert result[0].owner_id == 10
+        kept = [c for c in fused if c.score >= threshold]
+        assert kept, (
+            f"默认阈值 {threshold} 不应过滤掉双路命中的结果，"
+            f"实际分数 {[c.score for c in fused]}"
+        )
 
-    def test_public_visible_to_all(self):
-        """PUBLIC visibility → anyone can see."""
+    def test_old_threshold_035_filters_everything(self):
+        """回归防护：旧的 0.35 阈值在 RRF 量纲下必然过滤掉全部结果。"""
         retriever = HybridRetriever()
-        chunks = [
-            _sc(visibility="PUBLIC", owner_id=99),
-            _sc(visibility="PRIVATE", owner_id=99),
-        ]
-        result = retriever._apply_permission_filter(
-            chunks, user_id=10, role="USER", org_id=5,
-        )
-        assert len(result) == 1
-        assert result[0].visibility == "PUBLIC"
-
-    def test_org_same_org_visible(self):
-        """ORG visibility → same org_id can see."""
-        retriever = HybridRetriever()
-        chunks = [
-            _sc(visibility="ORG", org_id=5, owner_id=99),   # same org
-            _sc(visibility="ORG", org_id=999, owner_id=99), # different org
-        ]
-        result = retriever._apply_permission_filter(
-            chunks, user_id=10, role="USER", org_id=5,
-        )
-        assert len(result) == 1
-        assert result[0].org_id == 5
-
-    def test_org_different_org_blocked(self):
-        """ORG visibility → different org_id cannot see."""
-        retriever = HybridRetriever()
-        chunks = [
-            _sc(visibility="ORG", org_id=999, owner_id=99),
-        ]
-        result = retriever._apply_permission_filter(
-            chunks, user_id=10, role="USER", org_id=5,
-        )
-        assert len(result) == 0
-
-    def test_anonymous_user(self):
-        """Anonymous user (user_id=0) sees only PUBLIC."""
-        retriever = HybridRetriever()
-        chunks = [
-            _sc(visibility="PUBLIC", owner_id=99),
-            _sc(visibility="PRIVATE", owner_id=99),
-            _sc(visibility="ORG", org_id=5, owner_id=99),
-        ]
-        result = retriever._apply_permission_filter(
-            chunks, user_id=0, role="USER", org_id=0,
-        )
-        assert len(result) == 1
-        assert result[0].visibility == "PUBLIC"
-
-    def test_mixed_visibility(self):
-        """Complex scenario with all visibility types."""
-        retriever = HybridRetriever()
-        chunks = [
-            _sc("c1", visibility="PRIVATE", owner_id=10),   # owner → allowed
-            _sc("c2", visibility="PUBLIC", owner_id=99),    # public → allowed
-            _sc("c3", visibility="ORG", org_id=5, owner_id=99),  # same org → allowed
-            _sc("c4", visibility="ORG", org_id=999, owner_id=99),# diff org → blocked
-            _sc("c5", visibility="PRIVATE", owner_id=99),   # not owner → blocked
-        ]
-        result = retriever._apply_permission_filter(
-            chunks, user_id=10, role="USER", org_id=5,
-        )
-        allowed_ids = {c.chunk_id for c in result}
-        assert allowed_ids == {"c1", "c2", "c3"}
+        vec = [_vec_result("c0", "内容A", 0.9)]
+        bm25 = [_bm25_result("bm25_0", "内容A")]
+        fused = retriever._rrf_fusion(vec, bm25, alpha=0.5)
+        kept = [c for c in fused if c.score >= 0.35]
+        assert not kept, "0.35 阈值下 RRF 分数(≤0.016)必然全被过滤，若此处有结果说明量纲已变化"
 
 
 # ============================================================
-# Tests — has_permission (single chunk)
+# Tests — Permission Filter (Qdrant payload 层，真实实现)
 # ============================================================
 
-class TestHasPermission:
-    """Unit tests for _has_permission()."""
+class TestVectorPermissionFilter:
+    """VectorStore._build_permission_filter 的权限过滤语义。"""
 
-    def test_owner(self):
-        retriever = HybridRetriever()
-        chunk = _sc(owner_id=10, visibility="PRIVATE")
-        assert retriever._has_permission(chunk, user_id=10, org_id=0)
+    def _build(self, user_id=0, role="USER", org_id=0):
+        from app.services.vector_store import VectorStore
 
-    def test_not_owner_private(self):
-        retriever = HybridRetriever()
-        chunk = _sc(owner_id=99, visibility="PRIVATE")
-        assert not retriever._has_permission(chunk, user_id=10, org_id=0)
+        store = VectorStore()
+        return store._build_permission_filter(user_id, role, org_id)
 
-    def test_public(self):
-        retriever = HybridRetriever()
-        chunk = _sc(owner_id=99, visibility="PUBLIC")
-        assert retriever._has_permission(chunk, user_id=10, org_id=0)
+    def _should_keys(self, qfilter):
+        if qfilter is None:
+            return None
+        return {
+            tuple(cond.key for cond in f.must)
+            for f in qfilter.should
+        }
 
-    def test_org_match(self):
-        retriever = HybridRetriever()
-        chunk = _sc(owner_id=99, visibility="ORG", org_id=5)
-        assert retriever._has_permission(chunk, user_id=10, org_id=5)
+    def test_admin_bypasses(self):
+        """ADMIN → None（不过滤）。"""
+        assert self._build(user_id=10, role="ADMIN", org_id=5) is None
 
-    def test_org_no_match(self):
-        retriever = HybridRetriever()
-        chunk = _sc(owner_id=99, visibility="ORG", org_id=999)
-        assert not retriever._has_permission(chunk, user_id=10, org_id=5)
+    def test_owner_public_org_conditions(self):
+        """普通用户：owner_id / PUBLIC / (ORG+org_id) 三路 OR。"""
+        keys = self._should_keys(self._build(user_id=10, role="USER", org_id=5))
+        assert ("owner_id",) in keys
+        assert ("visibility",) in keys
+        assert ("visibility", "org_id") in keys
+
+    def test_anonymous_no_owner_no_org(self):
+        """匿名用户（user_id=0, org_id=0）：仅 PUBLIC 路。"""
+        keys = self._should_keys(self._build(user_id=0, role="USER", org_id=0))
+        assert keys == {("visibility",)}
 
     def test_org_zero_excluded(self):
-        """org_id=0 should not match org_id=0 (unset)."""
-        retriever = HybridRetriever()
-        chunk = _sc(owner_id=99, visibility="ORG", org_id=0)
-        assert not retriever._has_permission(chunk, user_id=10, org_id=0)
+        """org_id=0 时不生成 ORG 条件（避免误配未设置的组织）。"""
+        keys = self._should_keys(self._build(user_id=10, role="USER", org_id=0))
+        assert ("visibility", "org_id") not in keys
+
+    def test_role_case_insensitive(self):
+        """role 大小写不敏感（admin/Admin 均绕过）。"""
+        from app.services.vector_store import VectorStore
+
+        store = VectorStore()
+        assert store._build_permission_filter(1, "admin", 0) is None
+        assert store._build_permission_filter(1, "Admin", 0) is None
 
 
 # ============================================================

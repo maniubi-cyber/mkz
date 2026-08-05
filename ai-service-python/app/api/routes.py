@@ -345,10 +345,21 @@ async def search(request: SearchRequest):
         request.hybrid_alpha, request.user_id, request.role,
     )
 
+    # ---- Query Rewrite (指代消解 + 口语化修正) ----
+    # 与 /ai/chat 保持一致：检索链路的入口都应该走同一套 query 预处理，
+    # 否则同一句提问在「搜索」和「问答」里会命中不同结果。
+    search_query = request.query
+    if request.enable_query_rewrite:
+        search_query = rewrite_query(request.query)
+        if search_query != request.query:
+            logger.info(
+                "Query rewritten: '%s' → '%s'", request.query, search_query
+            )
+
     retriever = get_retriever()
     results = retriever.search(
         kb_id=request.kb_id,
-        query=request.query,
+        query=search_query,
         top_k=request.top_k,
         alpha=request.hybrid_alpha,
         similarity_threshold=request.similarity_threshold,
@@ -383,6 +394,7 @@ async def search(request: SearchRequest):
 
     return SearchResult(
         query=request.query,
+        rewritten_query=search_query if search_query != request.query else None,
         kb_id=request.kb_id,
         total_hits=len(chunks),
         top_k=request.top_k,

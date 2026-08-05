@@ -123,7 +123,7 @@ class HybridRetriever:
         query: str,
         top_k: int = 5,
         alpha: float = 0.5,
-        similarity_threshold: float = 0.35,
+        similarity_threshold: float | None = None,
         user_id: int = 0,
         role: str = "USER",
         org_id: int = 0,
@@ -136,7 +136,8 @@ class HybridRetriever:
             query:                Search query text (已过 LLM 改写).
             top_k:                Number of results to return.
             alpha:                0=pure BM25, 0.5=hybrid, 1=pure vector.
-            similarity_threshold: Minimum RRF score to include.
+            similarity_threshold: Minimum RRF score to include. None → 服务端配置
+                                  RAG_SIMILARITY_THRESHOLD（RRF 量纲 ~0~0.016）。
             user_id:              Current user ID (0 = anonymous).
             role:                 USER or ADMIN.
             org_id:               User's org ID.
@@ -144,6 +145,8 @@ class HybridRetriever:
         Returns:
             List of ScoredChunk (content 已回溯父块)，按相关度降序。
         """
+        if similarity_threshold is None:
+            similarity_threshold = settings.RAG_SIMILARITY_THRESHOLD
         # ---- 1. Qdrant 向量检索（命中子块，权限过滤在 payload 层）----
         vec_results: list[dict[str, Any]] = []
         if alpha > 0.0:
