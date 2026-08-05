@@ -1,6 +1,7 @@
 package com.example.rag.service;
 
 import com.example.rag.entity.Document;
+import com.example.rag.service.export.DocumentExportFactory;
 
 import java.io.ByteArrayOutputStream;
 

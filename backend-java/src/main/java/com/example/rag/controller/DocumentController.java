@@ -1,16 +1,22 @@
 package com.example.rag.controller;
 
 import com.example.rag.common.Result;
+import com.example.rag.dto.request.DocumentContentUpdateRequest;
+import com.example.rag.dto.response.DocumentDetailResponse;
 import com.example.rag.dto.response.DocumentResponse;
 import com.example.rag.dto.response.PageResponse;
+import com.example.rag.service.DocumentAsyncService;
 import com.example.rag.service.DocumentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.concurrent.ExecutionException;
 
 /**
  * 文档管理接口
@@ -20,6 +26,7 @@ import org.springframework.web.multipart.MultipartFile;
  *
  * @author knowledge-rag-team
  */
+@Slf4j
 @Tag(name = "文档管理", description = "文档上传 / 分页查询 / 详情 / 删除 / 重新解析")
 @RestController
 @RequestMapping("/api/documents")
@@ -27,6 +34,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class DocumentController {
 
     private final DocumentService documentService;
+    private final DocumentAsyncService documentAsyncService;
 
     // ==================== 上传文档 ====================
 
@@ -123,6 +131,37 @@ public class DocumentController {
         return Result.success(doc);
     }
 
+    // ==================== 文档详情（聚合，含正文） ====================
+
+    @Operation(
+            summary = "获取文档详情（多源聚合，含正文）",
+            description = """
+                    返回完整的文档详情，包含：
+                    <ul>
+                      <li>正文 content（Markdown）/ contentHtml</li>
+                      <li>作者信息、权限列表、版本历史</li>
+                      <li>浏览数（每次访问原子自增）</li>
+                    </ul>
+                    前端协同编辑器的初始内容与版本号均来源于此接口。
+                    """
+    )
+    @GetMapping("/{id}/detail")
+    public Result<DocumentDetailResponse> getDetail(
+            @Parameter(description = "文档 ID", required = true, example = "1")
+            @PathVariable Long id) {
+        try {
+            DocumentDetailResponse detail = documentAsyncService.getDocumentDetailAsync(id);
+            if (detail == null) {
+                return Result.error(404, "文档不存在");
+            }
+            return Result.success(detail);
+        } catch (ExecutionException | InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("获取文档详情失败: docId={}", id, e);
+            return Result.error(500, "获取文档详情失败");
+        }
+    }
+
     // ==================== 删除文档 ====================
 
     @Operation(
@@ -176,6 +215,27 @@ public class DocumentController {
 
         DocumentResponse doc = documentService.reparse(id);
         return Result.success("重新解析已触发", doc);
+    }
+
+    // ==================== 协同编辑内容保存 ====================
+
+    @Operation(
+            summary = "保存协同编辑后的文档正文",
+            description = """
+                    前端在协同收敛后，把当前权威全文与所基于的 OT 版本号提交保存。
+                    采用 last-write-wins 覆盖正文，并落一条版本历史记录。
+                    """
+    )
+    @PutMapping("/{id}/content")
+    public Result<Void> saveContent(
+            @Parameter(description = "文档 ID", required = true, example = "1")
+            @PathVariable Long id,
+
+            @Parameter(description = "保存请求体")
+            @RequestBody DocumentContentUpdateRequest req) {
+
+        documentService.updateContent(id, req.getContent(), req.getBaseRevision());
+        return Result.success();
     }
 
     // ==================== 文档导出 ====================

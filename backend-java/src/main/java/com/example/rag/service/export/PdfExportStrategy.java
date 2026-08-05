@@ -9,6 +9,7 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
@@ -117,10 +118,10 @@ public class PdfExportStrategy implements DocumentExportStrategy {
 
             // 回退到内置字体（不支持中文，但不会报错）
             log.warn("未找到中文字体，使用内置字体（中文可能无法正确显示）");
-            return PDType1Font.HELVETICA;
+            return new PDType1Font(Standard14Fonts.FontName.HELVETICA);
         } catch (Exception e) {
             log.warn("加载字体失败: {}", e.getMessage());
-            return PDType1Font.HELVETICA;
+            return new PDType1Font(Standard14Fonts.FontName.HELVETICA);
         }
     }
 

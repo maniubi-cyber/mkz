@@ -97,15 +97,14 @@ CREATE TABLE `document` (
     `create_time`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
-    KEY `idx_kb_id` (`kbId`),
+    KEY `idx_kb_id` (`kb_id`),
     KEY `idx_file_md5` (`file_md5`),
     KEY `idx_owner_id` (`owner_id`),
     KEY `idx_org_id` (`org_id`),
     KEY `idx_parse_status` (`parse_status`),
     KEY `idx_is_deleted` (`is_deleted`),
     KEY `idx_title` (`title`),
-    KEY `idx_create_time` (`create_time`),
-    
+    KEY `idx_create_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档表';
 
 -- ----------------------------

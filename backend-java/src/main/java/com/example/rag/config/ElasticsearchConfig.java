@@ -7,6 +7,7 @@ import co.elastic.clients.transport.rest_client.RestClientTransport;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHost;
 import org.elasticsearch.client.RestClient;
+import org.elasticsearch.client.RestClientBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -70,7 +71,7 @@ public class ElasticsearchConfig extends ElasticsearchConfiguration {
      */
     @Bean
     public RestClient restClient() {
-        RestClient.Builder builder = RestClient.builder(
+        RestClientBuilder builder = RestClient.builder(
                 new HttpHost(
                         elasticsearchUrl.replace("http://", "").replace("https://", "").split(":")[0],
                         Integer.parseInt(elasticsearchUrl.replace("http://", "").replace("https://", "").split(":")[1]),

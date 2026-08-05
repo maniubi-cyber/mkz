@@ -103,7 +103,8 @@ minio:
 # ==================== JWT Configuration ====================
 jwt:
   secret: ${JWT_SECRET:YOUR_BASE64_ENCODED_SECRET_KEY_MINIMUM_256_BITS_LONG}
-  expiration: ${JWT_EXPIRATION:86400000}
+  access-token-expire: ${JWT_ACCESS_EXPIRE:7200}
+  refresh-token-expire: ${JWT_REFRESH_EXPIRE:604800}
 
 # ==================== AI Service Configuration (Python 侧) ====================
 # AI/RAG 业务全部由 Python FastAPI 服务实现，Java 通过 RestTemplate 调用

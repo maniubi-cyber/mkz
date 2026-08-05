@@ -14,10 +14,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.query_dsl.*;
 import co.elastic.clients.elasticsearch.core.*;
 import co.elastic.clients.elasticsearch.core.search.*;
-import co.elastic.clients.json.JsonData;
 
 import java.io.IOException;
 import java.util.*;
@@ -234,19 +234,19 @@ public class DocumentSearchServiceImpl implements DocumentSearchService {
         BoolQuery.Builder permissionBuilder = new BoolQuery.Builder();
         // 公开文档
         permissionBuilder.should(s -> s.term(t -> t
-                .field("visibility").value(JsonData.of("PUBLIC"))));
+                .field("visibility").value(FieldValue.of("PUBLIC"))));
         // 自己创建的文档
         if (userId != null) {
             permissionBuilder.should(s -> s.term(t -> t
-                    .field("ownerId").value(JsonData.of(userId))));
+                    .field("ownerId").value(FieldValue.of(userId))));
         }
         // 组织内文档
         if (orgId != null) {
             permissionBuilder.should(s -> s.bool(b -> b
                     .must(m -> m.term(t -> t
-                            .field("visibility").value(JsonData.of("ORG"))))
+                            .field("visibility").value(FieldValue.of("ORG"))))
                     .must(m -> m.term(t -> t
-                            .field("orgId").value(JsonData.of(orgId))))
+                            .field("orgId").value(FieldValue.of(orgId))))
             ));
         }
         boolBuilder.filter(f -> f.bool(permissionBuilder.build()));
@@ -254,7 +254,7 @@ public class DocumentSearchServiceImpl implements DocumentSearchService {
         // 知识库过滤
         if (kbId != null) {
             boolBuilder.filter(f -> f.term(t -> t
-                    .field("kbId").value(JsonData.of(kbId))));
+                    .field("kbId").value(FieldValue.of(kbId))));
         }
 
         return boolBuilder.build();
@@ -300,7 +300,7 @@ public class DocumentSearchServiceImpl implements DocumentSearchService {
                 .ownerId(doc.getOwnerId())
                 .ownerName(doc.getOwnerName() != null ? doc.getOwnerName() : "")
                 .fileType(doc.getFileType() != null ? doc.getFileType() : "")
-                .score(hit.score())
+                .score(hit.score() != null ? hit.score().floatValue() : null)
                 .createTime(doc.getCreateTime())
                 .build();
     }
