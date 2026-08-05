@@ -1,6 +1,9 @@
 package com.example.rag.websocket;
 
+import com.example.rag.entity.Document;
+import com.example.rag.mapper.DocumentMapper;
 import com.example.rag.security.JwtTokenProvider;
+import com.example.rag.service.PermissionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,9 +13,11 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -47,6 +52,8 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
     private final JwtTokenProvider jwtTokenProvider;
     private final ObjectMapper objectMapper;
     private final OTEngine otEngine;
+    private final DocumentMapper documentMapper;
+    private final PermissionService permissionService;
 
     /** 会话属性: 用户 ID */
     private static final String ATTR_USER_ID = "userId";
@@ -54,6 +61,9 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
     private static final String ATTR_USERNAME = "username";
     /** 会话属性: 文档 ID */
     private static final String ATTR_DOC_ID = "docId";
+
+    /** 每个文档保留的最大操作历史条数 */
+    private static final int MAX_HISTORY_SIZE = 100;
 
     /**
      * 文档ID -> 操作历史队列（用于OT transform）
@@ -81,19 +91,36 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
         String docIdStr = getParameterValue(session, "docId");
 
         if (token == null || docIdStr == null) {
-            session.close(CloseStatus.BAD_DATA.reject("缺少必要参数: token 或 docId"));
+            session.close(new CloseStatus(4400, "缺少必要参数: token 或 docId"));
             return;
         }
 
         try {
             if (!jwtTokenProvider.validateToken(token)) {
-                session.close(CloseStatus.NOT_ACCEPTABLE.reject("无效的认证令牌"));
+                session.close(new CloseStatus(1003, "无效的认证令牌"));
                 return;
             }
 
             Long userId = jwtTokenProvider.getUserIdFromToken(token);
             String username = jwtTokenProvider.getUsernameFromToken(token);
             Long docId = Long.parseLong(docIdStr);
+
+            // ===== 权限校验：仅 WRITE 权限可加入协同编辑会话 =====
+            // owner / admin / document_permission 中 WRITE、ADMIN 用户可编辑；
+            // 只读用户直接拒绝握手，避免建立连接后被动的广播越权。
+            Document doc = documentMapper.selectById(docId);
+            if (doc == null) {
+                session.close(new CloseStatus(4404, "文档不存在"));
+                return;
+            }
+            try {
+                permissionService.checkDocWritePermission(doc);
+            } catch (Exception e) {
+                log.warn("WebSocket 编辑权限被拒绝: docId={}, userId={}, reason={}",
+                        docId, userId, e.getMessage());
+                session.close(new CloseStatus(4403, "无权编辑该文档，仅文档所有者或被授权者可编辑"));
+                return;
+            }
 
             session.getAttributes().put(ATTR_USER_ID, userId);
             session.getAttributes().put(ATTR_USERNAME, username);
@@ -108,10 +135,10 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
             broadcastUserJoin(session, docId, userId, username);
 
         } catch (NumberFormatException e) {
-            session.close(CloseStatus.BAD_DATA.reject("无效的文档 ID"));
+            session.close(new CloseStatus(4400, "无效的文档 ID"));
         } catch (Exception e) {
             log.error("WebSocket 连接建立失败", e);
-            session.close(CloseStatus.SERVER_ERROR.reject("连接建立失败"));
+            session.close(new CloseStatus(1011, "连接建立失败"));
         }
     }
 
@@ -206,8 +233,10 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        // 构建 OT 操作对象
-        OTEngine.Operation op = parseOTOperation(opMap);
+        // 构建 OT 操作对象。siteId 取用户 ID：
+        // 两个 INSERT 落在同一位置时，OT 引擎依靠它做确定性排序，避免文档分叉。
+        Long opUserId = message.getUserId();
+        OTEngine.Operation op = parseOTOperation(opMap, opUserId == null ? 0L : opUserId);
         if (op == null) {
             sendError(session, "操作解析失败");
             return;
@@ -223,6 +252,8 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
 
         // 如果客户端版本落后于服务器版本，需要进行 OT transform
         if (clientVersion < serverVersion) {
+            OTEngine.Operation originalOp = op;
+
             // 获取从 clientVersion 到 serverVersion 之间的所有操作
             List<OTOperationRecord> history = getOperationHistory(docId);
 
@@ -230,14 +261,14 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
             OTEngine.Operation transformedOp = op;
             for (OTOperationRecord record : history) {
                 if (record.version > clientVersion && record.version <= serverVersion) {
+                    OTEngine.Operation before = transformedOp;
                     transformedOp = otEngine.transformOp(transformedOp, record.op);
-                    log.debug("OT transform: {} against {} → {}", op, record.op, transformedOp);
+                    log.debug("OT transform: {} against {} → {}", before, record.op, transformedOp);
                 }
             }
 
             op = transformedOp;
-            log.info("OT transform 完成: original={}, transformed={}",
-                    parseOTOperation(opMap), op);
+            log.info("OT transform 完成: original={}, transformed={}", originalOp, op);
         }
 
         // 递增版本并广播
@@ -247,11 +278,14 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
         // 将变换后的操作广播给其他用户
         try {
             // 更新消息中的操作为变换后的版本
-            Map<String, Object> transformedOpMap = serializeOTOperation(op);
-            message.setOperation(transformedOpMap);
+            message.setOperation(objectMapper.convertValue(
+                    serializeOTOperation(op), WebSocketMessage.Operation.class));
 
             String messageJson = objectMapper.writeValueAsString(message);
-            sessionManager.broadcastToDocument(docId, messageJson, true, session.getId());
+            // 不排除发送者：前端需要收到自己操作的 ack 来推进 revision（否则 OT 客户端
+            // 永远收不到自身版本号，并发编辑时会与服务器历史双重 transform 导致文本分叉）。
+            // 前端按 userId 识别自身操作，仅推进版本、不重复应用到文本。
+            sessionManager.broadcastToDocument(docId, messageJson, false, session.getId());
         } catch (Exception e) {
             log.error("广播编辑操作失败", e);
         }
@@ -265,48 +299,51 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
     /**
      * 将客户端 JSON 操作解析为 OTEngine.Operation
      */
-    private OTEngine.Operation parseOTOperation(Map<String, Object> opMap) {
+    private OTEngine.Operation parseOTOperation(Map<String, Object> opMap, long siteId) {
         try {
             String type = (String) opMap.get("type");
-            Integer position = (Integer) opMap.get("position");
+            // Jackson 把 JSON 数字反序列化成 Object 时，可能是 Integer 也可能是 Long，
+            // 统一按 Number 取值再转 int，避免 ClassCastException。
+            int position = intValue(opMap.get("position"), 0);
             String content = (String) opMap.get("content");
-            Integer length = (Integer) opMap.get("length");
-            Integer retain = (Integer) opMap.get("retain");
+            int length = intValue(opMap.get("length"), 0);
+            int retain = intValue(opMap.get("retain"), 0);
 
             if ("insert".equals(type)) {
                 return new OTEngine.Operation(
                         OTEngine.OpType.INSERT,
-                        position != null ? position : 0,
+                        position,
                         content != null ? content : "",
-                        0, 0
+                        0, 0, siteId
                 );
             } else if ("delete".equals(type)) {
                 return new OTEngine.Operation(
                         OTEngine.OpType.DELETE,
-                        position != null ? position : 0,
-                        "",
-                        length != null ? length : 0,
-                        0
+                        position, "", length, 0, siteId
                 );
             } else if ("retain".equals(type)) {
                 return new OTEngine.Operation(
                         OTEngine.OpType.RETAIN,
-                        position != null ? position : 0,
-                        "", 0,
-                        retain != null ? retain : 0
+                        position, "", 0, retain, siteId
                 );
             }
+            log.warn("未知的操作类型: {}", type);
         } catch (Exception e) {
             log.error("解析操作失败: {}", opMap, e);
         }
         return null;
     }
 
+    /** 安全地把任意数字对象转为 int */
+    private static int intValue(Object value, int defaultValue) {
+        return value instanceof Number ? ((Number) value).intValue() : defaultValue;
+    }
+
     /**
      * 将 OTEngine.Operation 序列化为客户端 JSON
      */
     private Map<String, Object> serializeOTOperation(OTEngine.Operation op) {
-        Map<String, Object> map = new java.util.HashMap<>();
+        Map<String, Object> map = new HashMap<>();
         map.put("type", op.getType().toString().toLowerCase());
         map.put("position", op.getPos());
 
@@ -322,25 +359,36 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
     }
 
     /**
-     * 获取文档的操作历史
+     * 获取文档的操作历史（返回快照，避免遍历时被并发写入干扰）
      */
-    private java.util.List<OTOperationRecord> getOperationHistory(Long docId) {
-        List<OTOperationRecord> history = documentOperationHistory.getOrDefault(docId, Collections.emptyList());
+    private List<OTOperationRecord> getOperationHistory(Long docId) {
+        List<OTOperationRecord> history = documentOperationHistory.get(docId);
+        if (history == null || history.isEmpty()) {
+            return Collections.emptyList();
+        }
+        synchronized (history) {
+            return new ArrayList<>(history);
+        }
     }
 
     /**
      * 添加操作历史记录
      */
     private void addOperationHistory(Long docId, int version, OTEngine.Operation op) {
-        documentOperationHistory
-                .computeIfAbsent(docId, k -> new java.util.ArrayList<>())
-                .add(new OTOperationRecord(version, op));
+        List<OTOperationRecord> history =
+                documentOperationHistory.computeIfAbsent(docId, k -> new ArrayList<>());
 
-        // 限制历史记录长度，避免无限增长（保留最近 100 条）
-        java.util.List<OTOperationRecord> history = documentOperationHistory.get(docId);
-        if (history.size() > 100) {
-            documentOperationHistory.put(docId,
-                    history.subList(history.size() - 100, history.size()));
+        synchronized (history) {
+            history.add(new OTOperationRecord(version, op));
+
+            // 限制历史记录长度，避免无限增长（保留最近 MAX_HISTORY_SIZE 条）
+            // 注意：subList 返回的是原列表视图，必须拷贝成独立列表后再替换，
+            // 否则后续 add 会因视图与源列表结构性修改而抛 ConcurrentModificationException。
+            if (history.size() > MAX_HISTORY_SIZE) {
+                List<OTOperationRecord> trimmed =
+                        new ArrayList<>(history.subList(history.size() - MAX_HISTORY_SIZE, history.size()));
+                documentOperationHistory.put(docId, trimmed);
+            }
         }
     }
 

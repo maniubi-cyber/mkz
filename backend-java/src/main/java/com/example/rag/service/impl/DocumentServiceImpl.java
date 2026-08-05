@@ -1,6 +1,7 @@
 package com.example.rag.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.rag.common.BusinessException;
@@ -10,14 +11,17 @@ import com.example.rag.dto.response.DocumentResponse;
 import com.example.rag.dto.response.PageResponse;
 import com.example.rag.entity.Document;
 import com.example.rag.entity.DocumentChunk;
+import com.example.rag.entity.DocumentVersionHistory;
 import com.example.rag.entity.KnowledgeBase;
 import com.example.rag.mapper.DocumentChunkMapper;
 import com.example.rag.mapper.DocumentMapper;
+import com.example.rag.mapper.DocumentVersionHistoryMapper;
 import com.example.rag.mapper.KnowledgeBaseMapper;
 import com.example.rag.service.DocumentExportService;
 import com.example.rag.service.DocumentParseService;
 import com.example.rag.service.DocumentService;
 import com.example.rag.service.MinioService;
+import com.example.rag.service.PermissionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -76,10 +80,12 @@ public class DocumentServiceImpl implements DocumentService {
     private final DocumentMapper documentMapper;
     private final DocumentChunkMapper documentChunkMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
+    private final DocumentVersionHistoryMapper versionHistoryMapper;
     private final MinioService minioService;
     private final FileUploadValidator fileUploadValidator;
     private final DocumentParseService documentParseService;
     private final DocumentExportService documentExportService;
+    private final PermissionService permissionService;
     private final StringRedisTemplate redisTemplate;
 
     // ==================== 常量 ====================
@@ -315,6 +321,57 @@ public class DocumentServiceImpl implements DocumentService {
         return buildResponse(doc);
     }
 
+    // ==================== 协同编辑内容保存 ====================
+
+    @Override
+    @Transactional
+    public void updateContent(Long docId, String content, Integer baseRevision) {
+        // ===== 1. 文档存在性校验 =====
+        Document doc = documentMapper.selectById(docId);
+        if (doc == null) {
+            throw new BusinessException(404, "文档不存在");
+        }
+
+        // ===== 2. 权限校验：协同编辑要求 WRITE 权限 =====
+        //            与 WebSocket 编辑通道握手校验保持一致：
+        //            owner / admin / document_permission 中 WRITE、ADMIN 用户可保存。
+        checkDocWritePermission(doc);
+
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+
+        // ===== 3. 持久化正文（last-write-wins，绕过实体 @Version 乐观锁） =====
+        // 协同编辑中 OT 已保证各端文本收敛，保存只是把收敛后的全文做检查点持久化。
+        // 若用实体 updateById 触发 @Version 校验，两个客户端几乎同时保存会因版本号
+        // 不匹配而互相抛 OptimisticLockerException，反而丢失保存。因此直接用 UpdateWrapper。
+        UpdateWrapper<Document> uw = new UpdateWrapper<>();
+        uw.eq("id", docId)
+          .set("content", content)
+          .set("last_editor_id", currentUserId)
+          .set("update_time", LocalDateTime.now());
+        documentMapper.update(null, uw);
+
+        // ===== 4. 记录版本历史（失败不影响主流程） =====
+        try {
+            DocumentVersionHistory vh = new DocumentVersionHistory();
+            vh.setDocumentId(docId);
+            vh.setVersion(doc.getVersion() != null ? doc.getVersion() : 0);
+            vh.setTitle(doc.getTitle());
+            vh.setContent(content);
+            vh.setEditorId(currentUserId);
+            vh.setEditSummary("协同编辑保存");
+            vh.setCreateTime(LocalDateTime.now());
+            versionHistoryMapper.insert(vh);
+        } catch (Exception e) {
+            log.warn("版本历史记录失败（忽略）: docId={}", docId, e);
+        }
+
+        // ===== 5. 失效文档缓存，保证后续读取拿到最新正文 =====
+        evictDocumentCache(docId);
+
+        log.info("文档协同内容已保存: docId={}, editorId={}, length={}, baseRevision={}",
+                docId, currentUserId, content != null ? content.length() : 0, baseRevision);
+    }
+
     // ==================== 私有：MD5 / 去重 ====================
 
     private String computeMd5(byte[] fileBytes) {
@@ -376,66 +433,30 @@ public class DocumentServiceImpl implements DocumentService {
         return wrapper;
     }
 
-    // ==================== 私有：权限校验 ====================
+    // ==================== 私有：权限校验（统一委托 PermissionService） ====================
 
     private void checkKbUploadPermission(KnowledgeBase kb) {
-        if (SecurityUtils.isAdmin()) return;
-        Long currentUserId = SecurityUtils.getCurrentUserId();
-        Long currentOrgId = SecurityUtils.getCurrentUserOrgId();
-
-        if (kb.getOwnerId().equals(currentUserId)) return;
-        if (VISIBILITY_PUBLIC.equals(kb.getVisibility())) return;
-        if (VISIBILITY_ORG.equals(kb.getVisibility())
-                && kb.getOrgId() != null && kb.getOrgId().equals(currentOrgId)) return;
-
-        throw new BusinessException(403, "无权向该知识库上传文档");
+        permissionService.checkKbUploadPermission(kb);
     }
 
     private void checkKbViewPermission(KnowledgeBase kb) {
-        if (SecurityUtils.isAdmin()) return;
-        Long currentUserId = SecurityUtils.getCurrentUserId();
-        Long currentOrgId = SecurityUtils.getCurrentUserOrgId();
-
-        if (kb.getOwnerId().equals(currentUserId)) return;
-        if (VISIBILITY_PUBLIC.equals(kb.getVisibility())) return;
-        if (VISIBILITY_ORG.equals(kb.getVisibility())
-                && kb.getOrgId() != null && kb.getOrgId().equals(currentOrgId)) return;
-
-        throw new BusinessException(403, "无权查看该知识库下的文档");
+        permissionService.checkKbViewPermission(kb);
     }
 
     private void checkDocViewPermission(Document doc) {
-        if (SecurityUtils.isAdmin()) return;
-        Long currentUserId = SecurityUtils.getCurrentUserId();
-        Long currentOrgId = SecurityUtils.getCurrentUserOrgId();
+        permissionService.checkDocViewPermission(doc);
+    }
 
-        if (doc.getOwnerId().equals(currentUserId)) return;
-        if (VISIBILITY_PUBLIC.equals(doc.getVisibility())) return;
-        if (VISIBILITY_ORG.equals(doc.getVisibility())
-                && doc.getOrgId() != null && doc.getOrgId().equals(currentOrgId)) return;
-
-        throw new BusinessException(403, "无权查看该文档");
+    private void checkDocWritePermission(Document doc) {
+        permissionService.checkDocWritePermission(doc);
     }
 
     private void checkOwnerOrAdmin(Document doc, String action) {
-        if (SecurityUtils.isAdmin()) return;
-        Long currentUserId = SecurityUtils.getCurrentUserId();
-        if (!doc.getOwnerId().equals(currentUserId)) {
-            throw new BusinessException(403,
-                    "无权" + action + "该文档，仅文档上传者或管理员可操作");
-        }
+        permissionService.checkOwnerOrAdmin(doc, action);
     }
 
     private void validateDocVisibility(String visibility, Long orgId) {
-        if (!VISIBILITY_PRIVATE.equals(visibility)
-                && !VISIBILITY_PUBLIC.equals(visibility)
-                && !VISIBILITY_ORG.equals(visibility)) {
-            throw new BusinessException(400,
-                    "无效的可见范围: " + visibility + "，可选值: PRIVATE / PUBLIC / ORG");
-        }
-        if (VISIBILITY_ORG.equals(visibility) && orgId == null) {
-            throw new BusinessException(400, "可见范围为 ORG 时，组织 ID 不能为空");
-        }
+        permissionService.validateVisibility(visibility, orgId);
     }
 
     // ==================== 私有：Redis 缓存操作 ====================

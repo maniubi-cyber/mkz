@@ -9,6 +9,7 @@ import com.example.rag.dto.response.KbResponse;
 import com.example.rag.entity.KnowledgeBase;
 import com.example.rag.mapper.KnowledgeBaseMapper;
 import com.example.rag.service.KnowledgeBaseService;
+import com.example.rag.service.PermissionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,7 @@ import java.util.List;
 public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
     private final KnowledgeBaseMapper knowledgeBaseMapper;
+    private final PermissionService permissionService;
 
     // ==================== 可见范围常量 ====================
     private static final String VISIBILITY_PRIVATE = "PRIVATE";
@@ -188,63 +190,17 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         log.info("知识库已软删除: id={}, name={}", kb.getId(), kb.getName());
     }
 
-    // ==================== 私有辅助方法 ====================
+    // ==================== 私有辅助方法（统一委托 PermissionService） ====================
 
-    /**
-     * 校验可见范围合法性
-     */
     private void validateVisibility(String visibility, Long orgId) {
-        String upper = visibility != null ? visibility.toUpperCase() : "";
-        if (!VISIBILITY_PRIVATE.equals(upper)
-                && !VISIBILITY_PUBLIC.equals(upper)
-                && !VISIBILITY_ORG.equals(upper)) {
-            throw new BusinessException(400,
-                    "无效的可见范围: " + visibility + "，可选值: PRIVATE / PUBLIC / ORG");
-        }
-        if (VISIBILITY_ORG.equals(upper) && orgId == null) {
-            throw new BusinessException(400, "可见范围为 ORG 时，所属组织 ID 不能为空");
-        }
+        permissionService.validateVisibility(visibility, orgId);
     }
 
-    /**
-     * 权限校验：仅 owner 或 admin 可编辑/删除
-     */
     private void checkOwnerOrAdmin(KnowledgeBase kb, String action) {
-        if (SecurityUtils.isAdmin()) {
-            return;
-        }
-        Long currentUserId = SecurityUtils.getCurrentUserId();
-        if (!kb.getOwnerId().equals(currentUserId)) {
-            throw new BusinessException(403,
-                    "无权" + action + "该知识库，仅知识库创建者或管理员可操作");
-        }
+        permissionService.checkKbOwnerOrAdmin(kb, action);
     }
 
-    /**
-     * 查看权限校验：owner / admin / PUBLIC / ORG成员 可查看
-     */
     private void checkViewPermission(KnowledgeBase kb, String action) {
-        if (SecurityUtils.isAdmin()) {
-            return;
-        }
-        Long currentUserId = SecurityUtils.getCurrentUserId();
-        Long currentOrgId = SecurityUtils.getCurrentUserOrgId();
-
-        // owner 可查看
-        if (kb.getOwnerId().equals(currentUserId)) {
-            return;
-        }
-        // PUBLIC 任何人可查看
-        if (VISIBILITY_PUBLIC.equals(kb.getVisibility())) {
-            return;
-        }
-        // ORG 同组织成员可查看
-        if (VISIBILITY_ORG.equals(kb.getVisibility())
-                && kb.getOrgId() != null
-                && kb.getOrgId().equals(currentOrgId)) {
-            return;
-        }
-
-        throw new BusinessException(403, "无权" + action + "该知识库");
+        permissionService.checkKbViewPermission(kb);
     }
 }

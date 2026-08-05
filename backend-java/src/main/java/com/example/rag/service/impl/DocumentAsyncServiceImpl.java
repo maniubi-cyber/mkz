@@ -5,6 +5,7 @@ import com.example.rag.dto.response.DocumentDetailResponse;
 import com.example.rag.entity.*;
 import com.example.rag.mapper.*;
 import com.example.rag.service.DocumentAsyncService;
+import com.example.rag.service.PermissionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -34,12 +35,20 @@ public class DocumentAsyncServiceImpl implements DocumentAsyncService {
     private final DocumentVersionHistoryMapper versionHistoryMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final StringRedisTemplate redisTemplate;
+    private final PermissionService permissionService;
 
     @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
     private final ExecutorService asyncTaskExecutor;
 
-    /** 浏览量 Redis Key 前缀 */
-    private static final String VIEW_COUNT_KEY_PREFIX = "doc:view_count:";
+    /**
+     * 文档缓存哈希 Key 前缀。
+     * 与 DocumentServiceImpl.CACHE_DOC_PREFIX("doc:") 保持一致，
+     * 浏览量作为该哈希中的一个字段存储，避免额外维护一份独立的 String 计数。
+     */
+    private static final String DOC_CACHE_KEY_PREFIX = "doc:";
+
+    /** 文档缓存哈希中存放浏览量的字段名 */
+    private static final String FIELD_VIEW_COUNT = "viewCount";
 
     /** 异步任务超时时间（毫秒） */
     private static final long ASYNC_TIMEOUT_MS = 3000;
@@ -103,12 +112,18 @@ public class DocumentAsyncServiceImpl implements DocumentAsyncService {
             return permissions;
         }, asyncTaskExecutor);
 
-        // 任务4：查询浏览数（从 Redis 读取）
-        CompletableFuture<Integer> viewCountFuture = CompletableFuture.supplyAsync(() -> {
+        // 任务4：原子递增浏览数并返回最新值
+        //
+        // 这里用 Redis HINCRBY 一步完成「自增 + 取值」，而不是先 GET 再 PUT：
+        //   1. 读-改-写非原子，并发访问会互相覆盖，浏览量必然少计；
+        //   2. 更危险的是超时路径——若读取任务未在超时前完成，getNow(0) 会返回 0，
+        //      后续再写回 0+1，等于把真实浏览量直接重置成 1。
+        // HINCRBY 由 Redis 保证原子性，两个问题一并消除。
+        CompletableFuture<Long> viewCountFuture = CompletableFuture.supplyAsync(() -> {
             long t = System.currentTimeMillis();
-            String viewCountStr = (String) redisTemplate.opsForHash().get("doc:" + docId, "viewCount");
-            int viewCount = viewCountStr != null ? Integer.parseInt(viewCountStr) : 0;
-            log.debug("查询浏览数完成: docId={}, viewCount={}, cost={}ms",
+            Long viewCount = redisTemplate.opsForHash()
+                    .increment(DOC_CACHE_KEY_PREFIX + docId, FIELD_VIEW_COUNT, 1L);
+            log.debug("浏览数递增完成: docId={}, viewCount={}, cost={}ms",
                     docId, viewCount, System.currentTimeMillis() - t);
             return viewCount;
         }, asyncTaskExecutor);
@@ -153,26 +168,24 @@ public class DocumentAsyncServiceImpl implements DocumentAsyncService {
             return null;
         }
 
+        // ===== 3.1 权限校验：防止越权读取任意 PRIVATE 文档全文 =====
+        // 详情接口聚合了正文、版本历史、权限列表等敏感信息，
+        // 必须在返回前按文档可见性校验（复用统一权限服务）。
+        permissionService.checkDocViewPermission(doc);
+
         User author = authorFuture.getNow(null);
         List<DocumentPermission> permissions = permissionsFuture.getNow(Collections.emptyList());
-        Integer viewCount = viewCountFuture.getNow(0);
         List<DocumentVersionHistory> versionHistory = versionHistoryFuture.getNow(Collections.emptyList());
         KnowledgeBase kb = kbFuture.getNow(null);
 
-        // ===== 4. 异步增加浏览量（不阻塞主流程） =====
-        CompletableFuture.runAsync(() -> {
-            try {
-                redisTemplate.opsForHash().put(
-                        "doc:" + docId,
-                        "viewCount",
-                        String.valueOf(viewCount + 1)
-                );
-            } catch (Exception e) {
-                log.warn("浏览量更新失败: docId={}", docId, e);
-            }
-        }, asyncTaskExecutor);
+        // 递增任务若超时未返回，回退到文档表里的历史浏览量，
+        // 避免因 Redis 慢查询而在响应里显示 0。
+        Long incrementedViewCount = viewCountFuture.getNow(null);
+        int viewCount = incrementedViewCount != null
+                ? incrementedViewCount.intValue()
+                : (doc.getViewCount() != null ? doc.getViewCount() : 0);
 
-        // ===== 5. 聚合结果 =====
+        // ===== 4. 聚合结果 =====
         // 查询权限对应的用户名
         List<DocumentDetailResponse.PermissionInfo> permissionInfos = Collections.emptyList();
         if (!permissions.isEmpty()) {
@@ -232,7 +245,9 @@ public class DocumentAsyncServiceImpl implements DocumentAsyncService {
                 .fileSize(doc.getFileSize())
                 .parseStatus(doc.getParseStatus())
                 .chunkCount(doc.getChunkCount())
-                .viewCount(viewCount + 1) // +1 因为刚访问
+                // 注意：viewCountFuture 已通过 HINCRBY 原子自增并直接返回最新值，
+                // 此处不要再 +1，否则每次访问都会多计一次。
+                .viewCount(viewCount)
                 .version(doc.getVersion())
                 .visibility(doc.getVisibility())
                 // 作者信息
@@ -253,8 +268,8 @@ public class DocumentAsyncServiceImpl implements DocumentAsyncService {
     public void incrementViewCountAsync(Long docId) {
         CompletableFuture.runAsync(() -> {
             try {
-                String key = VIEW_COUNT_KEY_PREFIX + docId;
-                redisTemplate.opsForValue().increment(key);
+                String key = DOC_CACHE_KEY_PREFIX + docId;
+                redisTemplate.opsForHash().increment(key, FIELD_VIEW_COUNT, 1L);
             } catch (Exception e) {
                 log.warn("浏览量更新失败: docId={}", docId, e);
             }
