@@ -118,6 +118,10 @@ class Settings(BaseSettings):
         default=True,
         description="是否启用 ES BM25 检索路径（关闭则回退到本地 rank-bm25）"
     )
+    ES_ANALYZER_IK: bool = Field(
+        default=True,
+        description="是否使用 IK 中文分词（未安装 IK 插件时置 False 回退 standard）"
+    )
 
     # ---- LLM 元数据自动提取 ----
     LLM_METADATA_ENABLED: bool = Field(

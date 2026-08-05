@@ -175,6 +175,7 @@ public class DocumentServiceImpl implements DocumentService {
         Long currentUserId = SecurityUtils.getCurrentUserId();
         Document doc = new Document();
         doc.setKbId(kbId);
+        doc.setTitle(StringUtils.stripFilenameExtension(safeFilename));
         doc.setFileMd5(md5Hex);
         doc.setFileName(safeFilename);
         doc.setFileType(fileType);

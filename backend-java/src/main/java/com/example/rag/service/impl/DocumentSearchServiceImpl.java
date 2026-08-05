@@ -11,13 +11,17 @@ import com.example.rag.mapper.UserMapper;
 import com.example.rag.service.DocumentSearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.ElasticsearchException;
 import co.elastic.clients.elasticsearch._types.FieldValue;
+import co.elastic.clients.elasticsearch._types.mapping.*;
 import co.elastic.clients.elasticsearch._types.query_dsl.*;
 import co.elastic.clients.elasticsearch.core.*;
 import co.elastic.clients.elasticsearch.core.search.*;
+import co.elastic.clients.elasticsearch.indices.CreateIndexResponse;
 
 import java.io.IOException;
 import java.util.*;
@@ -49,6 +53,54 @@ public class DocumentSearchServiceImpl implements DocumentSearchService {
     private static final int HIGHLIGHT_FRAGMENT_SIZE = 150;
     private static final int HIGHLIGHT_NUM_FRAGMENTS = 3;
 
+    /** IK 分词器开关：true=ik_max_word/ik_smart，false=standard（ES 未装 IK 插件时回退） */
+    @Value("${spring.elasticsearch.analyzer-ik:true}")
+    private boolean analyzerIk;
+
+    private String indexAnalyzer() {
+        return analyzerIk ? "ik_max_word" : "standard";
+    }
+
+    private String searchAnalyzer() {
+        return analyzerIk ? "ik_smart" : "standard";
+    }
+
+    /**
+     * 幂等创建索引（含 IK/standard 分词映射），写入前调用。
+     */
+    private void ensureIndex() {
+        try {
+            boolean exists = elasticsearchClient.indices().exists(e -> e.index(INDEX_NAME)).value();
+            if (exists) {
+                return;
+            }
+            CreateIndexResponse resp = elasticsearchClient.indices().create(c -> c
+                    .index(INDEX_NAME)
+                    .mappings(m -> m
+                            .properties("id", p -> p.long_(l -> l))
+                            .properties("title", p -> p.text(t -> t
+                                    .analyzer(indexAnalyzer())
+                                    .searchAnalyzer(searchAnalyzer())
+                                    .fields("keyword", f -> f.keyword(k -> k))))
+                            .properties("content", p -> p.text(t -> t
+                                    .analyzer(indexAnalyzer())
+                                    .searchAnalyzer(searchAnalyzer())))
+                            .properties("kbId", p -> p.long_(l -> l))
+                            .properties("ownerId", p -> p.long_(l -> l))
+                            .properties("ownerName", p -> p.keyword(k -> k))
+                            .properties("visibility", p -> p.keyword(k -> k))
+                            .properties("orgId", p -> p.long_(l -> l))
+                            .properties("fileType", p -> p.keyword(k -> k))
+                            .properties("chunkCount", p -> p.integer(i -> i))
+                            .properties("createTime", p -> p.date(d -> d))
+                            .properties("updateTime", p -> p.date(d -> d))
+                    ));
+            log.info("ES 索引创建成功: {}, analyzer={}", INDEX_NAME, indexAnalyzer());
+        } catch (IOException e) {
+            log.error("ES 索引创建失败: {}", INDEX_NAME, e);
+        }
+    }
+
     /**
      * 全文搜索文档
      */
@@ -58,6 +110,7 @@ public class DocumentSearchServiceImpl implements DocumentSearchService {
         long startTime = System.currentTimeMillis();
 
         try {
+            ensureIndex();
             SearchRequest.Builder requestBuilder = new SearchRequest.Builder()
                     .index(INDEX_NAME)
                     .from((page - 1) * size)
@@ -103,6 +156,9 @@ public class DocumentSearchServiceImpl implements DocumentSearchService {
         } catch (IOException e) {
             log.error("ES搜索异常: keyword={}", keyword, e);
             throw new RuntimeException("搜索服务暂时不可用", e);
+        } catch (ElasticsearchException e) {
+            log.warn("ES搜索不可用（索引不存在等）: keyword={}, err={}", keyword, e.getMessage());
+            return List.of();
         }
     }
 
@@ -128,6 +184,7 @@ public class DocumentSearchServiceImpl implements DocumentSearchService {
     @Override
     public void indexDocument(Long docId) {
         try {
+            ensureIndex();
             Document doc = documentMapper.selectById(docId);
             if (doc == null) {
                 log.warn("文档不存在，跳过索引: docId={}", docId);
@@ -182,11 +239,14 @@ public class DocumentSearchServiceImpl implements DocumentSearchService {
     public void rebuildAllIndex() {
         log.info("开始重建所有文档索引...");
         try {
-            // 删除旧索引
+            ensureIndex();
+            // 清空旧索引文档（保留索引结构）
             try {
-                elasticsearchClient.indices().delete(d -> d.index(INDEX_NAME));
+                elasticsearchClient.deleteByQuery(dq -> dq
+                        .index(INDEX_NAME)
+                        .query(q -> q.matchAll(ma -> ma)));
             } catch (Exception e) {
-                log.warn("删除旧索引失败（可能不存在）: {}", e.getMessage());
+                log.warn("清空旧索引失败（可能不存在）: {}", e.getMessage());
             }
 
             // 查询所有文档并重建索引

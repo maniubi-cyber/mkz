@@ -88,10 +88,16 @@ class ESBM25Client:
     def _index_name(self, kb_id: int) -> str:
         return f"{settings.ES_BM25_INDEX_PREFIX}{kb_id}"
 
+    def _index_analyzer(self) -> str:
+        return "ik_max_word" if settings.ES_ANALYZER_IK else "standard"
+
+    def _search_analyzer(self) -> str:
+        return "ik_smart" if settings.ES_ANALYZER_IK else "standard"
+
     # ---- Index Management ----
 
     def _ensure_index(self, kb_id: int) -> None:
-        """确保索引存在，含 IK 分词映射。"""
+        """确保索引存在，含 IK/standard 分词映射。"""
         client = self._get_client()
         if client is None:
             return
@@ -104,8 +110,8 @@ class ESBM25Client:
                     "properties": {
                         "content": {
                             "type": "text",
-                            "analyzer": "ik_max_word",
-                            "search_analyzer": "ik_smart",
+                            "analyzer": self._index_analyzer(),
+                            "search_analyzer": self._search_analyzer(),
                         },
                         "document_id": {"type": "integer"},
                         "kb_id": {"type": "integer"},
@@ -114,8 +120,8 @@ class ESBM25Client:
                         "chunk_index": {"type": "integer"},
                         "file_name": {
                             "type": "text",
-                            "analyzer": "ik_max_word",
-                            "search_analyzer": "ik_smart",
+                            "analyzer": self._index_analyzer(),
+                            "search_analyzer": self._search_analyzer(),
                         },
                         "owner_id": {"type": "integer"},
                         "visibility": {"type": "keyword"},
@@ -123,15 +129,15 @@ class ESBM25Client:
                         "doc_version": {"type": "integer"},
                         "topic": {
                             "type": "text",
-                            "analyzer": "ik_max_word",
-                            "search_analyzer": "ik_smart",
+                            "analyzer": self._index_analyzer(),
+                            "search_analyzer": self._search_analyzer(),
                         },
                         "keywords": {"type": "keyword"},
                     }
                 }
             }
             client.indices.create(index=index_name, body=mapping)
-            logger.info("ES BM25 索引创建: %s", index_name)
+            logger.info("ES BM25 索引创建: %s (analyzer=%s)", index_name, self._index_analyzer())
         except Exception as e:
             logger.warning("ES 索引创建失败 %s: %s", index_name, e)
 
