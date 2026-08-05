@@ -83,6 +83,17 @@ public class AiServiceClient {
     }
 
     /**
+     * RAG 对话（检索 + LLM 生成）
+     *
+     * @param request 请求参数 { kb_id, question, conversation_id, history, user_id, role, org_id, ... }
+     * @return 响应 { answer, sources, token_usage, generation_time_ms, ... }
+     */
+    public Map<String, Object> chat(Map<String, Object> request) {
+        String url = baseUrl + "/ai/chat";
+        return postForMap(url, request);
+    }
+
+    /**
      * 统一 POST 调用：JSON 请求体 → Map 响应
      */
     private Map<String, Object> postForMap(String url, Map<String, Object> request) {
