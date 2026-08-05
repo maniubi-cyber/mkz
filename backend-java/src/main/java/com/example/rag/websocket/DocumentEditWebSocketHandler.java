@@ -73,6 +73,27 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
             new ConcurrentHashMap<>();
 
     /**
+     * 文档ID -> 当前历史中最早的操作版本号。
+     *
+     * <p>历史被截断（超过 MAX_HISTORY_SIZE）后，早于该版本号的客户端
+     * 无法被完整 transform，必须强制其全量同步（发送 sync_response 后重载）。</p>
+     */
+    private final Map<Long, Integer> historyMinVersion = new ConcurrentHashMap<>();
+
+    /**
+     * 文档ID -> 文档级锁对象。
+     *
+     * <p>串行化同一文档的「读取版本 → OT transform → 递增版本 → 记录历史」
+     * 关键路径。两个客户端并发发操作时，若不加锁，二者可能基于同一版本各自
+     * transform 并递增，导致广播顺序与版本号错位、文本分叉。</p>
+     */
+    private final Map<Long, Object> documentLocks = new ConcurrentHashMap<>();
+
+    private Object getDocLock(Long docId) {
+        return documentLocks.computeIfAbsent(docId, k -> new Object());
+    }
+
+    /**
      * OT操作记录 - 用于版本历史追踪
      */
     private static class OTOperationRecord {
@@ -244,56 +265,73 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
 
         // 获取客户端版本（客户端发送时携带的版本号）
         int clientVersion = message.getVersion() != null ? message.getVersion() : 0;
-        // 获取服务器当前版本
-        int serverVersion = sessionManager.getVersion(docId);
 
-        log.info("收到编辑操作: docId={}, clientVersion={}, serverVersion={}, op={}",
-                docId, clientVersion, serverVersion, op);
+        // ===== 文档级锁：串行化 OT 关键路径 =====
+        // 读取版本 → transform → 递增版本 → 记录历史 必须原子完成，
+        // 否则并发操作会基于同一版本各自 transform 导致文本分叉。
+        synchronized (getDocLock(docId)) {
+            // 获取服务器当前版本
+            int serverVersion = sessionManager.getVersion(docId);
 
-        // 如果客户端版本落后于服务器版本，需要进行 OT transform
-        if (clientVersion < serverVersion) {
-            OTEngine.Operation originalOp = op;
+            log.info("收到编辑操作: docId={}, clientVersion={}, serverVersion={}, op={}",
+                    docId, clientVersion, serverVersion, op);
 
-            // 获取从 clientVersion 到 serverVersion 之间的所有操作
-            List<OTOperationRecord> history = getOperationHistory(docId);
+            // 如果客户端版本落后于服务器版本，需要进行 OT transform
+            if (clientVersion < serverVersion) {
+                OTEngine.Operation originalOp = op;
 
-            // 依次与历史操作进行 transform
-            OTEngine.Operation transformedOp = op;
-            for (OTOperationRecord record : history) {
-                if (record.version > clientVersion && record.version <= serverVersion) {
-                    OTEngine.Operation before = transformedOp;
-                    transformedOp = otEngine.transformOp(transformedOp, record.op);
-                    log.debug("OT transform: {} against {} → {}", before, record.op, transformedOp);
+                // 历史截断降级：客户端版本早于历史中最老的操作 → 无法完整 transform，
+                // 直接通知客户端全量重新同步（前端收到 sync_response 后重载最新正文）。
+                Integer minVersion = historyMinVersion.get(docId);
+                if (minVersion != null && clientVersion < minVersion) {
+                    log.warn("编辑历史已截断，强制客户端全量同步: docId={}, clientVersion={}, minVersion={}",
+                            docId, clientVersion, minVersion);
+                    sendError(session, "编辑历史已过期，正在重新同步最新内容，请稍后继续编辑");
+                    handleSync(message, session);
+                    return;
                 }
+
+                // 获取从 clientVersion 到 serverVersion 之间的所有操作
+                List<OTOperationRecord> history = getOperationHistory(docId);
+
+                // 依次与历史操作进行 transform
+                OTEngine.Operation transformedOp = op;
+                for (OTOperationRecord record : history) {
+                    if (record.version > clientVersion && record.version <= serverVersion) {
+                        OTEngine.Operation before = transformedOp;
+                        transformedOp = otEngine.transformOp(transformedOp, record.op);
+                        log.debug("OT transform: {} against {} → {}", before, record.op, transformedOp);
+                    }
+                }
+
+                op = transformedOp;
+                log.info("OT transform 完成: original={}, transformed={}", originalOp, op);
             }
 
-            op = transformedOp;
-            log.info("OT transform 完成: original={}, transformed={}", originalOp, op);
+            // 递增版本并广播
+            int newVersion = sessionManager.incrementAndGetVersion(docId);
+            message.setVersion(newVersion);
+
+            // 将变换后的操作广播给其他用户
+            try {
+                // 更新消息中的操作为变换后的版本
+                message.setOperation(objectMapper.convertValue(
+                        serializeOTOperation(op), WebSocketMessage.Operation.class));
+
+                String messageJson = objectMapper.writeValueAsString(message);
+                // 不排除发送者：前端需要收到自己操作的 ack 来推进 revision（否则 OT 客户端
+                // 永远收不到自身版本号，并发编辑时会与服务器历史双重 transform 导致文本分叉）。
+                // 前端按 userId 识别自身操作，仅推进版本、不重复应用到文本。
+                sessionManager.broadcastToDocument(docId, messageJson, false, session.getId());
+            } catch (Exception e) {
+                log.error("广播编辑操作失败", e);
+            }
+
+            // 记录操作历史
+            addOperationHistory(docId, newVersion, op);
+
+            log.info("操作已广播: docId={}, newVersion={}, op={}", docId, newVersion, op);
         }
-
-        // 递增版本并广播
-        int newVersion = sessionManager.incrementAndGetVersion(docId);
-        message.setVersion(newVersion);
-
-        // 将变换后的操作广播给其他用户
-        try {
-            // 更新消息中的操作为变换后的版本
-            message.setOperation(objectMapper.convertValue(
-                    serializeOTOperation(op), WebSocketMessage.Operation.class));
-
-            String messageJson = objectMapper.writeValueAsString(message);
-            // 不排除发送者：前端需要收到自己操作的 ack 来推进 revision（否则 OT 客户端
-            // 永远收不到自身版本号，并发编辑时会与服务器历史双重 transform 导致文本分叉）。
-            // 前端按 userId 识别自身操作，仅推进版本、不重复应用到文本。
-            sessionManager.broadcastToDocument(docId, messageJson, false, session.getId());
-        } catch (Exception e) {
-            log.error("广播编辑操作失败", e);
-        }
-
-        // 记录操作历史
-        addOperationHistory(docId, newVersion, op);
-
-        log.info("操作已广播: docId={}, newVersion={}, op={}", docId, newVersion, op);
     }
 
     /**
@@ -388,6 +426,11 @@ public class DocumentEditWebSocketHandler extends TextWebSocketHandler {
                 List<OTOperationRecord> trimmed =
                         new ArrayList<>(history.subList(history.size() - MAX_HISTORY_SIZE, history.size()));
                 documentOperationHistory.put(docId, trimmed);
+                // 记录截断后历史中最老的版本号：早于它的客户端无法被完整 transform，
+                // 由 handleOperation 触发全量同步降级。
+                historyMinVersion.put(docId, trimmed.get(0).version);
+                log.warn("OT 历史已截断: docId={}, 保留最近 {} 条（minVersion={}）",
+                        docId, trimmed.size(), trimmed.get(0).version);
             }
         }
     }
