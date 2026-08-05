@@ -106,18 +106,22 @@ class DocumentServiceImplUpdateContentTest {
             service.updateContent(1L, "协同编辑后的正文", 3);
         }
 
-        // 1) 正文通过 UpdateWrapper 写入（last-write-wins，不带 version 触发乐观锁）
+        // 1) 正文通过 UpdateWrapper 写入（last-write-wins，版本号手动递增）
         ArgumentCaptor<UpdateWrapper<Document>> cap = ArgumentCaptor.forClass(UpdateWrapper.class);
         verify(docMapper).update(isNull(), cap.capture());
+        assertTrue(cap.getValue().getSqlSet().contains("version"),
+                "UpdateWrapper 应显式更新 version 字段");
+        assertTrue(cap.getValue().getParamNameValuePairs().containsValue(6),
+                "version 参数值应为 5+1=6");
 
-        // 2) 版本历史落库，且记录的是本次保存的正文与编辑者
+        // 2) 版本历史落库，且记录的是本次保存的正文、编辑者与递增后的版本号
         ArgumentCaptor<DocumentVersionHistory> vhCap =
                 ArgumentCaptor.forClass(DocumentVersionHistory.class);
         verify(vhMapper).insert(vhCap.capture());
         DocumentVersionHistory saved = vhCap.getValue();
         assertEquals("协同编辑后的正文", saved.getContent());
         assertEquals(1L, saved.getEditorId());
-        assertEquals(Integer.valueOf(5), saved.getVersion());
+        assertEquals(Integer.valueOf(6), saved.getVersion());
         assertEquals("协同编辑保存", saved.getEditSummary());
 
         // 3) 失效文档缓存

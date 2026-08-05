@@ -368,9 +368,12 @@ public class DocumentServiceImpl implements DocumentService {
         // 协同编辑中 OT 已保证各端文本收敛，保存只是把收敛后的全文做检查点持久化。
         // 若用实体 updateById 触发 @Version 校验，两个客户端几乎同时保存会因版本号
         // 不匹配而互相抛 OptimisticLockerException，反而丢失保存。因此直接用 UpdateWrapper。
+        // 版本号在此手动递增，供版本历史与前端基线区分使用。
+        int newVersion = (doc.getVersion() != null ? doc.getVersion() : 0) + 1;
         UpdateWrapper<Document> uw = new UpdateWrapper<>();
         uw.eq("id", docId)
           .set("content", content)
+          .set("version", newVersion)
           .set("last_editor_id", currentUserId)
           .set("update_time", LocalDateTime.now());
         documentMapper.update(null, uw);
@@ -379,7 +382,7 @@ public class DocumentServiceImpl implements DocumentService {
         try {
             DocumentVersionHistory vh = new DocumentVersionHistory();
             vh.setDocumentId(docId);
-            vh.setVersion(doc.getVersion() != null ? doc.getVersion() : 0);
+            vh.setVersion(newVersion);
             vh.setTitle(doc.getTitle());
             vh.setContent(content);
             vh.setEditorId(currentUserId);
