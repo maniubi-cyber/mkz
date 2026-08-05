@@ -70,8 +70,7 @@ class DocumentServiceImplUpdateContentTest {
         DocumentServiceImpl service = new DocumentServiceImpl(
                 docMapper, chunkMapper, kbMapper, vhMapper,
                 minio, validator, parse, export, permissionService,
-                searchService, redis, mock(ApplicationEventPublisher.class),
-                mock(DocumentServiceImpl.class));
+                searchService, redis, mock(ApplicationEventPublisher.class));
         return service;
     }
 

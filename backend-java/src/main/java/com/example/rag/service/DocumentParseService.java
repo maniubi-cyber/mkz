@@ -6,6 +6,7 @@ import com.example.rag.event.DocumentParseTriggerEvent;
 import com.example.rag.mapper.DocumentMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
@@ -52,9 +53,15 @@ public class DocumentParseService {
     private final DocumentMapper documentMapper;
     private final AiServiceClient aiServiceClient;
 
-    /** 自引用（Lazy）：让 @Async / @Retryable 注解经代理生效，避免同类自调用失效 */
+    /**
+     * 自引用（Lazy + 字段注入）：让 @Async / @Retryable 注解经代理生效。
+     *
+     * <p>注意不能用构造器注入：Lombok 不会把 @Lazy 复制到构造器参数，
+     * 会导致循环依赖。字段注入 + @Lazy 由 Spring 延迟解析。</p>
+     */
+    @Autowired
     @Lazy
-    private final DocumentParseService self;
+    private DocumentParseService self;
 
     // ==================== 事件监听：事务提交后触发解析 ====================
 

@@ -202,6 +202,8 @@ services:
       # Elasticsearch (BM25 双路召回 + IK 中文分词)
       - ES_URIS=http://rag-elasticsearch:9200
       - ES_BM25_ENABLED=true
+      # 内部调用共享密钥（与 backend-java 的 AI_INTERNAL_SECRET 必须一致）
+      - AI_INTERNAL_SECRET=${AI_INTERNAL_SECRET:-dev-internal-secret-change-me}
     volumes:
       - ai_service_data:/app/data
     depends_on:
@@ -251,6 +253,8 @@ services:
       - MINIO_BUCKET=knowledge-rag
       # AI Service
       - AI_SERVICE_URL=http://rag-ai-service:8000
+      # 内部调用共享密钥（与 ai-service 的 AI_INTERNAL_SECRET 必须一致）
+      - AI_INTERNAL_SECRET=${AI_INTERNAL_SECRET:-dev-internal-secret-change-me}
       # JWT
       - JWT_SECRET=${JWT_SECRET:-your-secret-key-minimum-256-bits-long-for-jwt-signing}
       - JWT_EXPIRATION=86400000

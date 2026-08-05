@@ -11,16 +11,15 @@ import org.elasticsearch.client.RestClientBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.elasticsearch.client.ClientConfiguration;
-import org.springframework.data.elasticsearch.client.elc.ElasticsearchConfiguration;
 import org.springframework.data.elasticsearch.repository.config.EnableElasticsearchRepositories;
-
-import java.time.Duration;
 
 /**
  * Elasticsearch 配置类 - Spring Data ES (ES 8.x Client)
  *
  * <p>使用 ES 8.x 原生 Java API Client 替代已废弃的 RestHighLevelClient。</p>
+ *
+ * <p>注意：不能继承 {@code ElasticsearchConfiguration}，其父类自带同名的
+ * {@code elasticsearchClient} 工厂方法，会导致 Bean 定义冲突（Ambiguous factory method）。</p>
  *
  * <h3>IK 分词器：</h3>
  * <ul>
@@ -46,7 +45,7 @@ import java.time.Duration;
 @Slf4j
 @Configuration
 @EnableElasticsearchRepositories(basePackages = "com.example.rag.repository")
-public class ElasticsearchConfig extends ElasticsearchConfiguration {
+public class ElasticsearchConfig {
 
     @Value("${spring.data.elasticsearch.uris:http://localhost:9200}")
     private String elasticsearchUrl;
@@ -56,15 +55,6 @@ public class ElasticsearchConfig extends ElasticsearchConfiguration {
 
     @Value("${spring.data.elasticsearch.password:}")
     private String password;
-
-    @Override
-    public ClientConfiguration clientConfiguration() {
-        return ClientConfiguration.builder()
-                .connectedTo(elasticsearchUrl.replace("http://", "").replace("https://", ""))
-                .withConnectTimeout(Duration.ofSeconds(10))
-                .withSocketTimeout(Duration.ofSeconds(30))
-                .build();
-    }
 
     /**
      * 创建 ES 8.x 原生 Transport（供 ElasticsearchClient 使用）

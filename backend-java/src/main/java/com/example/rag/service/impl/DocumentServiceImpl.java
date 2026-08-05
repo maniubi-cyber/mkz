@@ -26,6 +26,7 @@ import com.example.rag.service.MinioService;
 import com.example.rag.service.PermissionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -94,9 +95,15 @@ public class DocumentServiceImpl implements DocumentService {
     private final StringRedisTemplate redisTemplate;
     private final ApplicationEventPublisher eventPublisher;
 
-    /** 自引用（Lazy）：让 @Async 注解经代理生效，避免同类自调用同步执行 */
+    /**
+     * 自引用（Lazy + 字段注入）：让 @Async 注解经代理生效，避免同类自调用同步执行。
+     *
+     * <p>注意不能用构造器注入：Lombok 不会把 @Lazy 复制到构造器参数，
+     * 会导致循环依赖。字段注入 + @Lazy 由 Spring 延迟解析。</p>
+     */
+    @Autowired
     @Lazy
-    private final DocumentServiceImpl self;
+    private DocumentServiceImpl self;
 
     // ==================== 常量 ====================
 
