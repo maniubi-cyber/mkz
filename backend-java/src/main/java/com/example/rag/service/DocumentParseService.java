@@ -2,13 +2,17 @@ package com.example.rag.service;
 
 import com.example.rag.client.AiServiceClient;
 import com.example.rag.entity.Document;
+import com.example.rag.event.DocumentParseTriggerEvent;
 import com.example.rag.mapper.DocumentMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -28,9 +32,15 @@ import java.util.Map;
  *                   → FAILED (记录 parse_fail_msg)
  * </pre>
  *
- * <h3>调用方式</h3>
- * 
- * 通过 RestTemplate 调用 Python AI 服务，完成 RAG 文档解析与向量删除。
+ * <h3>异步边界约定</h3>
+ * <ul>
+ *   <li>upload / reparse 事务内只发布 {@link DocumentParseTriggerEvent}，
+ *       本服务在事务提交（AFTER_COMMIT）后真正触发解析，
+ *       避免异步线程读到未提交的文档数据。</li>
+ *   <li>解析调用本身带 {@code @Retryable} 重试（3 次退避），
+ *       且通过 self 代理调用保证重试注解真正生效（同类自调用会绕过代理）。</li>
+ *   <li>重试耗尽后由外层标记 FAILED，不向上抛异常。</li>
+ * </ul>
  *
  * @author knowledge-rag团队
  */
@@ -42,6 +52,22 @@ public class DocumentParseService {
     private final DocumentMapper documentMapper;
     private final AiServiceClient aiServiceClient;
 
+    /** 自引用（Lazy）：让 @Async / @Retryable 注解经代理生效，避免同类自调用失效 */
+    @Lazy
+    private final DocumentParseService self;
+
+    // ==================== 事件监听：事务提交后触发解析 ====================
+
+    /**
+     * 事务提交后异步触发文档解析。
+     *
+     * <p>fallbackExecution=true：无事务上下文（如定时任务直接发布事件）时也执行。</p>
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void onParseTriggered(DocumentParseTriggerEvent event) {
+        self.triggerParseAsync(event.getDocId());
+    }
+
     // ==================== 异步解析 ====================
 
     /**
@@ -52,11 +78,6 @@ public class DocumentParseService {
      * @param docId 文档 ID
      */
     @Async
-    @Retryable(
-            retryFor = {RuntimeException.class},
-            maxAttempts = 3,
-            backoff = @Backoff(delay = 1000, multiplier = 2)
-    )
     public void triggerParseAsync(Long docId) {
         log.info("开始异步解析文档: docId={}", docId);
 
@@ -72,9 +93,9 @@ public class DocumentParseService {
         doc.setUpdateTime(LocalDateTime.now());
         documentMapper.updateById(doc);
 
-        // 2. 调用 Python AI 解析服务
+        // 2. 调用 Python AI 解析服务（自带 3 次重试，经代理调用保证 @Retryable 生效）
         try {
-            callPythonParser(doc);
+            self.parseWithRetry(doc);
 
             // 3. 解析成功
             doc.setParseStatus("SUCCESS");
@@ -84,7 +105,7 @@ public class DocumentParseService {
             log.info("文档解析成功: docId={}, fileName={}, chunkCount={}",
                     doc.getId(), doc.getFileName(), doc.getChunkCount());
         } catch (Exception e) {
-            // 4. 解析失败
+            // 4. 重试耗尽后标记解析失败
             String failMsg = e.getMessage() != null ? e.getMessage() : "未知解析错误";
             if (failMsg.length() > 500) {
                 failMsg = failMsg.substring(0, 500);
@@ -96,6 +117,21 @@ public class DocumentParseService {
             log.error("文档解析失败: docId={}, fileName={}, error={}",
                     doc.getId(), doc.getFileName(), failMsg);
         }
+    }
+
+    /**
+     * 带重试的解析调用（独立方法保证 @Retryable 代理生效）。
+     *
+     * <p>注意：本方法只负责调用 Python 服务与回写 chunk_count，
+     * 重试耗尽后抛出的异常由外层 {@link #triggerParseAsync} 捕获并标记 FAILED。</p>
+     */
+    @Retryable(
+            retryFor = {RuntimeException.class},
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 1000, multiplier = 2)
+    )
+    public void parseWithRetry(Document doc) {
+        callPythonParser(doc);
     }
 
     // ==================== 异步删除向量 ====================

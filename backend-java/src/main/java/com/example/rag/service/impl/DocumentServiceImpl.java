@@ -13,6 +13,7 @@ import com.example.rag.entity.Document;
 import com.example.rag.entity.DocumentChunk;
 import com.example.rag.entity.DocumentVersionHistory;
 import com.example.rag.entity.KnowledgeBase;
+import com.example.rag.event.DocumentParseTriggerEvent;
 import com.example.rag.mapper.DocumentChunkMapper;
 import com.example.rag.mapper.DocumentMapper;
 import com.example.rag.mapper.DocumentVersionHistoryMapper;
@@ -25,6 +26,8 @@ import com.example.rag.service.MinioService;
 import com.example.rag.service.PermissionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -89,6 +92,11 @@ public class DocumentServiceImpl implements DocumentService {
     private final PermissionService permissionService;
     private final DocumentSearchService documentSearchService;
     private final StringRedisTemplate redisTemplate;
+    private final ApplicationEventPublisher eventPublisher;
+
+    /** 自引用（Lazy）：让 @Async 注解经代理生效，避免同类自调用同步执行 */
+    @Lazy
+    private final DocumentServiceImpl self;
 
     // ==================== 常量 ====================
 
@@ -183,8 +191,8 @@ public class DocumentServiceImpl implements DocumentService {
         // ===== 8. 使知识库文档列表缓存失效 =====
         evictKbDocListCache(kbId);
 
-        // ===== 9. 异步触发 Python 解析 =====
-        documentParseService.triggerParseAsync(doc.getId());
+        // ===== 9. 发布解析触发事件：事务提交后由 DocumentParseService 异步解析 =====
+        eventPublisher.publishEvent(new DocumentParseTriggerEvent(doc.getId()));
 
         // ===== 10. 异步写入 ES 全文索引（失败不影响主流程） =====
         try {
@@ -285,7 +293,8 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
         // ===== 5. 异步清理 MinIO + 切片 + 向量库 =====
-        asyncCleanup(doc);
+        // 通过 self 代理调用，保证 @Async 真正生效（同类自调用会绕过代理同步执行）
+        self.asyncCleanup(doc);
     }
 
     // ==================== 重新解析 ====================
@@ -331,8 +340,8 @@ public class DocumentServiceImpl implements DocumentService {
         cacheDocument(doc);
         evictKbDocListCache(doc.getKbId());
 
-        // ===== 7. 异步触发 Python 解析 =====
-        documentParseService.triggerParseAsync(doc.getId());
+        // ===== 7. 发布解析触发事件：事务提交后由 DocumentParseService 异步解析 =====
+        eventPublisher.publishEvent(new DocumentParseTriggerEvent(doc.getId()));
 
         return buildResponse(doc);
     }

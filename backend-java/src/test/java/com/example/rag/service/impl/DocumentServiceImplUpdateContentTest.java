@@ -15,6 +15,7 @@ import com.example.rag.service.DocumentSearchService;
 import com.example.rag.service.MinioService;
 import com.example.rag.service.PermissionService;
 import com.example.rag.common.FileUploadValidator;
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -66,10 +67,12 @@ class DocumentServiceImplUpdateContentTest {
         DocumentParseService parse = mock(DocumentParseService.class);
         DocumentExportService export = mock(DocumentExportService.class);
         DocumentSearchService searchService = mock(DocumentSearchService.class);
-        return new DocumentServiceImpl(
+        DocumentServiceImpl service = new DocumentServiceImpl(
                 docMapper, chunkMapper, kbMapper, vhMapper,
                 minio, validator, parse, export, permissionService,
-                searchService, redis);
+                searchService, redis, mock(ApplicationEventPublisher.class),
+                mock(DocumentServiceImpl.class));
+        return service;
     }
 
     private Document privateDoc(Long ownerId, Integer version) {
