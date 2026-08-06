@@ -446,10 +446,10 @@ class VectorStore:
         collection_name = self._get_collection_name(kb_id)
         try:
             client.delete_collection(collection_name=collection_name)
-            logger.info("Qdrant collection 已删除: {}", collection_name)
+            logger.info("Qdrant collection 已删除: %s", collection_name)
             return True
         except Exception as e:
-            logger.warning("Qdrant collection 删除失败: {}, error={}",
+            logger.warning("Qdrant collection 删除失败: %s, error=%s",
                            collection_name, e)
             return False
 

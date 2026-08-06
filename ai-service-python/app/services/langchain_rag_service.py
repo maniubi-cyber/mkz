@@ -238,7 +238,7 @@ class RedisParentChunkStore:
                 settings.redis_url,
                 decode_responses=True,
             )
-            logger.info("Redis 客户端初始化完成: {}", settings.redis_url)
+            logger.info("Redis 客户端初始化完成: %s", settings.redis_url)
         return self._redis_client
 
     def store_parent_chunks(self, parent_chunks: list[ParentChunk]) -> int:
@@ -276,7 +276,7 @@ class RedisParentChunkStore:
 
         pipe.execute()
 
-        logger.info("父块存储完成: count={}", len(parent_chunks))
+        logger.info("父块存储完成: count=%d", len(parent_chunks))
         return len(parent_chunks)
 
     def get_parent_chunk(self, parent_id: str) -> Optional[ParentChunk]:
@@ -353,7 +353,7 @@ class RedisParentChunkStore:
         pipe.delete(f"doc:{document_id}:version")
         pipe.execute()
 
-        logger.info("父块删除完成: kb_id={}, doc_id={}, count={}", kb_id, document_id, len(parent_ids))
+        logger.info("父块删除完成: kb_id=%d, doc_id=%d, count=%d", kb_id, document_id, len(parent_ids))
         return len(parent_ids)
 
 
