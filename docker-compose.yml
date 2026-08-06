@@ -1,211 +1,143 @@
 # ============================================================
-# 知识库文档协作平台 - Docker Compose 配置
-# 技术栈: Spring Boot + Elasticsearch + Redis + FastAPI + LangChain + Qdrant + MySQL + MinIO
+# Knowledge-RAG 全栈一键编排
+# 前端(Vue3/nginx) + Java 后端 + Python AI 服务
+# + MySQL / Redis / Elasticsearch / Qdrant / MinIO
+#
+# 使用：cp .env.example .env（填入 LLM_API_KEY 等）→ docker compose up -d
+# 访问：http://localhost
 # ============================================================
-#
-# 启动所有服务:
-#   docker-compose up -d
-#
-# 服务列表:
-#   - mysql: 文档元数据存储
-#   - redis: 缓存 + 子切块存储
-#   - minio: 文件对象存储
-#   - elasticsearch: 全文检索 (IK中文分词)
-#   - kibana: ES 可视化管理
-#   - qdrant: 向量数据库（子块 embedding 检索入口）
-#   - ai-service: Python FastAPI 服务 (LangChain RAG)
-#   - backend-java: Spring Boot Java 服务
+
+name: knowledge-rag
 
 services:
-
-  # ==================== MySQL ====================
+  # ---------- 基础设施 ----------
   mysql:
     image: mysql:8.0
-    container_name: rag-mysql
+    container_name: knowledge-mysql
     restart: unless-stopped
-    ports:
-      - "3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: js2003
-      MYSQL_DATABASE: knowledge_rag
-      TZ: Asia/Shanghai
-      LANG: C.UTF-8
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     volumes:
-      - mysql_data:/var/lib/mysql
-      - ./backend-java/src/main/resources/db/init.sql:/docker-entrypoint-initdb.d/init.sql
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --default-authentication-plugin=mysql_native_password
-      - --max_connections=500
-      - --innodb_buffer_pool_size=512M
+      - mysql-data:/var/lib/mysql
+      - ./backend-java/src/main/resources/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pjs2003"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
-      retries: 5
-    networks:
-      - rag-network
+      retries: 10
+      start_period: 30s
 
-  # ==================== Redis ====================
   redis:
     image: redis:7-alpine
-    container_name: rag-redis
+    container_name: knowledge-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
     volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+      - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - rag-network
 
-  # ==================== MinIO ====================
-  minio:
-    image: minio/minio:latest
-    container_name: rag-minio
-    restart: unless-stopped
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-      TZ: Asia/Shanghai
-    volumes:
-      - minio_data:/data
-    command: server /data --console-address ":9001"
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    networks:
-      - rag-network
-
-  # ==================== Elasticsearch (IK分词) ====================
   elasticsearch:
-    image: elasticsearch:8.13.0
-    container_name: rag-elasticsearch
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.19
+    container_name: knowledge-es
     restart: unless-stopped
-    ports:
-      - "9200:9200"
-      - "9300:9300"
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-      - TZ=Asia/Shanghai
-    volumes:
-      - es_data:/usr/share/elasticsearch/data
-      - ./elasticsearch/plugins:/usr/share/elasticsearch/plugins
-      - ./elasticsearch/config:/usr/share/elasticsearch/config
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g
     ulimits:
       memlock:
         soft: -1
         hard: -1
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    networks:
-      - rag-network
-
-  # ==================== Kibana (ES可视化) ====================
-  kibana:
-    image: kibana:8.13.0
-    container_name: rag-kibana
-    restart: unless-stopped
-    ports:
-      - "5601:5601"
-    environment:
-      - ELASTICSEARCH_HOSTS=http://rag-elasticsearch:9200
-      - TZ=Asia/Shanghai
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-    networks:
-      - rag-network
-
-  # ==================== Qdrant 向量数据库（子块 embedding 检索入口） ====================
-  qdrant:
-    image: qdrant/qdrant:v1.9.0
-    container_name: rag-qdrant
-    restart: unless-stopped
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    environment:
-      - QDRANT__LOG_LEVEL=INFO
-      - TZ=Asia/Shanghai
     volumes:
-      - qdrant_data:/qdrant/storage
+      - es-data:/usr/share/elasticsearch/data
     healthcheck:
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333' || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.7
+    container_name: knowledge-qdrant
+    restart: unless-stopped
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
-    networks:
-      - rag-network
 
-  # ==================== Python AI Service (FastAPI + LangChain) ====================
-  ai-service:
-    build:
-      context: ./ai-service-python
-      dockerfile: Dockerfile
-    container_name: rag-ai-service
+  minio:
+    image: minio/minio:latest
+    container_name: knowledge-minio
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    command: server /data --console-address ":9001"
     environment:
-      - ENV=dev
-      - AI_SERVICE_PORT=8000
-      - CORS_ORIGINS=*
-      - LOG_LEVEL=INFO
-      # MySQL
-      - MYSQL_HOST=rag-mysql
-      - MYSQL_PORT=3306
-      - MYSQL_USER=root
-      - MYSQL_PASSWORD=js2003
-      - MYSQL_DATABASE=knowledge_rag
-      # Redis
-      - REDIS_HOST=rag-redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=
-      - REDIS_DATABASE=0
-      # MinIO
-      - MINIO_ENDPOINT=rag-minio:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
-      - MINIO_BUCKET=knowledge-rag
-      # LLM
-      - LLM_API_KEY=${LLM_API_KEY:-sk-your-api-key}
-      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.deepseek.com/v1}
-      - LLM_MODEL_NAME=${LLM_MODEL_NAME:-deepseek-chat}
-      # Embedding
-      - EMBEDDING_MODEL_NAME=BAAI/bge-large-zh-v1.5
-      - EMBEDDING_DEVICE=cpu
-      # Qdrant 向量数据库
-      - QDRANT_HOST=rag-qdrant
-      - QDRANT_PORT=6333
-      - QDRANT_GRPC_PORT=6334
-      - QDRANT_PREFER_GRPC=true
-      # Elasticsearch (BM25 双路召回 + IK 中文分词)
-      - ES_URIS=http://rag-elasticsearch:9200
-      - ES_BM25_ENABLED=true
-      # 内部调用共享密钥（与 backend-java 的 AI_INTERNAL_SECRET 必须一致）
-      - AI_INTERNAL_SECRET=${AI_INTERNAL_SECRET:-dev-internal-secret-change-me}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
-      - ai_service_data:/app/data
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: knowledge-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
+      mc mb -p local/knowledge-rag ||
+      exit 0
+      "
+
+  # ---------- 应用服务 ----------
+  ai-service:
+    build: ./ai-service-python
+    container_name: knowledge-ai
+    restart: unless-stopped
+    environment:
+      ENV: prod
+      # 服务间互调签名（与 backend 必须一致）
+      AI_INTERNAL_SECRET: ${AI_INTERNAL_SECRET}
+      # 基础设施地址（容器内网服务名）
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: knowledge_rag
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      ES_URIS: http://elasticsearch:9200
+      ES_ANALYZER_IK: "false"
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: "6333"
+      QDRANT_GRPC_PORT: "6334"
+      QDRANT_PREFER_GRPC: "false"
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: knowledge-rag
+      # Embedding（内置模型路径）
+      EMBEDDING_MODEL_NAME: /app/models/bge-small-zh-v1.5
+      EMBEDDING_DIMENSION: "512"
+      EMBEDDING_DEVICE: cpu
+      # LLM
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL_NAME: ${LLM_MODEL_NAME}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
     depends_on:
       mysql:
         condition: service_healthy
@@ -215,50 +147,31 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_healthy
-    networks:
-      - rag-network
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
 
-  # ==================== Java Backend Service (Spring Boot) ====================
-  # 注意: Java 侧 AI/RAG 业务全部由 Python 侧实现
-  # Java 通过 HTTP REST API 调用 Python AI 服务
-  backend-java:
-    build:
-      context: ./backend-java
-      dockerfile: Dockerfile
-    container_name: rag-backend-java
+  backend:
+    build: ./backend-java
+    container_name: knowledge-backend
     restart: unless-stopped
-    ports:
-      - "8080:8080"
     environment:
-      - SPRING_PROFILES_ACTIVE=prod
-      # App
-      - APP_PORT=8080
-      # MySQL
-      - MYSQL_HOST=rag-mysql
-      - MYSQL_PORT=3306
-      - MYSQL_USERNAME=root
-      - MYSQL_PASSWORD=js2003
-      # Redis
-      - REDIS_HOST=rag-redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=
-      # Elasticsearch
-      - ES_URIS=http://rag-elasticsearch:9200
-      - ES_USERNAME=
-      - ES_PASSWORD=
-      # MinIO
-      - MINIO_ENDPOINT=http://rag-minio:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
-      - MINIO_BUCKET=knowledge-rag
-      # AI Service
-      - AI_SERVICE_URL=http://rag-ai-service:8000
-      # 内部调用共享密钥（与 ai-service 的 AI_INTERNAL_SECRET 必须一致）
-      - AI_INTERNAL_SECRET=${AI_INTERNAL_SECRET:-dev-internal-secret-change-me}
-      # JWT
-      - JWT_SECRET=${JWT_SECRET:-your-secret-key-minimum-256-bits-long-for-jwt-signing}
-      - JWT_EXPIRATION=86400000
-      # 注意: 不再需要 OPENAI_API_KEY 等配置，AI 业务由 Python 侧处理
+      APP_PORT: "8080"
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      ES_URIS: http://elasticsearch:9200
+      ES_ANALYZER_IK: "false"
+      AI_SERVICE_URL: http://ai-service:8000
+      AI_INTERNAL_SECRET: ${AI_INTERNAL_SECRET}
+      JWT_SECRET: ${JWT_SECRET}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: knowledge-rag
     depends_on:
       mysql:
         condition: service_healthy
@@ -266,19 +179,24 @@ services:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
+      minio:
+        condition: service_healthy
       ai-service:
-        condition: service_started
-    networks:
-      - rag-network
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    container_name: knowledge-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
-  mysql_data:
-  redis_data:
-  minio_data:
-  es_data:
-  qdrant_data:
-  ai_service_data:
-
-networks:
-  rag-network:
-    driver: bridge
+  mysql-data:
+  redis-data:
+  es-data:
+  qdrant-data:
+  minio-data:

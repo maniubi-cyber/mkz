@@ -32,9 +32,9 @@ ENV JAVA_OPTS="-Xms512m -Xmx1g -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError"
 # 暴露端口
 EXPOSE 8080
 
-# 健康检查
+# 健康检查（无 actuator，用 TCP 探测 8080 端口）
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8080/actuator/health || exit 1
+    CMD nc -z 127.0.0.1 8080 || exit 1
 
 # 启动命令
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
