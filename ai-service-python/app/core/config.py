@@ -102,8 +102,8 @@ class Settings(BaseSettings):
         description="距离度量: Cosine / Euclid / Dot"
     )
     QDRANT_PREFER_GRPC: bool = Field(
-        default=True,
-        description="是否优先使用 gRPC（高吞吐场景推荐）"
+        default=False,
+        description="是否优先使用 gRPC（高吞吐场景推荐）。默认走 REST：qdrant-client 与 Qdrant 服务端 major 版本不一致时 gRPC 会报向量维度错误，REST 兼容性更好"
     )
 
     # ---- Elasticsearch (BM25 双路召回 + 元数据权限过滤) ----

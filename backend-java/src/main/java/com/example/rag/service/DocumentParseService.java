@@ -201,7 +201,11 @@ public class DocumentParseService {
                 "doc_id", doc.getId(),
                 "minio_path", doc.getMinioPath(),
                 "file_type", doc.getFileType(),
-                "kb_id", doc.getKbId()
+                "kb_id", doc.getKbId(),
+                "owner_id", doc.getOwnerId() != null ? doc.getOwnerId() : 0,
+                "visibility", doc.getVisibility() != null ? doc.getVisibility() : "PUBLIC",
+                "org_id", doc.getOrgId() != null ? doc.getOrgId() : 0,
+                "file_name", doc.getFileName() != null ? doc.getFileName() : "unknown"
         );
 
         log.debug("调用 AI 解析服务: body={}", requestBody);
@@ -220,8 +224,8 @@ public class DocumentParseService {
                 }
             }
 
-            // 检查是否有错误
-            if (response != null && response.containsKey("error")) {
+            // 检查是否有错误（AI 侧成功响应恒含 error=null 字段，仅 error 非空才算失败）
+            if (response != null && response.get("error") != null) {
                 throw new RuntimeException("AI 解析服务返回错误: " + response.get("error"));
             }
         } catch (Exception e) {

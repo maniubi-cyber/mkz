@@ -245,8 +245,13 @@ class VectorStore:
         return len(child_chunks)
 
     def _make_point_id(self, document_id: int, chunk: Any) -> str:
-        """生成稳定的子切块 point ID（基于文档ID+父块序号+子块序号）。"""
-        return f"doc_{document_id}_p{chunk.parent_index}_c{chunk.index}"
+        """生成稳定的子切块 point ID（基于文档ID+父块序号+子块序号）。
+
+        使用确定性 UUIDv5：Qdrant gRPC 要求 UUID 格式的字符串 ID，
+        且确定性保证重复写入幂等覆盖（upsert 同 ID 更新）。
+        """
+        raw = f"doc_{document_id}_p{chunk.parent_index}_c{chunk.index}"
+        return str(uuid.uuid5(uuid.NAMESPACE_DNS, raw))
 
     # ---- Public API: 删除 ----
 

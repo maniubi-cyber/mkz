@@ -41,7 +41,7 @@ sentence-transformers>=3.0.0
 
 # Retrieval & Ranking
 rank-bm25>=0.2.2
-elasticsearch>=8.13.0  # ES BM25 双路召回（与 Java 侧共用 ES 集群）
+elasticsearch>=8.13.0,<9  # ES BM25 双路召回（与 Java 侧共用 ES 集群；9.x 与 ES 8.x 服务端不兼容，勿升级）
 
 # Text Processing
 jieba>=0.42.1

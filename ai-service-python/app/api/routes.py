@@ -37,7 +37,7 @@ from app.services.parser import (
     EmptyDocumentError,
     ParserError,
     UnsupportedFormatError,
-    parse_document,
+    parse_document as parse_document_text,
 )
 from app.services.query_rewrite import rewrite_query
 from app.services.retriever import get_retriever
@@ -133,7 +133,7 @@ async def parse_document(request: ParseRequest):
     t_step = time.perf_counter()
 
     try:
-        raw_text = parse_document(file_bytes, request.file_type)
+        raw_text = parse_document_text(file_bytes, request.file_type)
     except UnsupportedFormatError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except EmptyDocumentError as e:
@@ -265,7 +265,7 @@ async def rebuild_document_incremental(request: ParseRequest):
         raise HTTPException(status_code=500, detail=f"MinIO 下载失败: {e}")
 
     try:
-        raw_text = parse_document(file_bytes, request.file_type)
+        raw_text = parse_document_text(file_bytes, request.file_type)
     except (UnsupportedFormatError, EmptyDocumentError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     except ParserError as e:
